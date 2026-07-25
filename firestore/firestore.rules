@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function role() {
+      return isSignedIn() ? request.auth.token.role : null;
+    }
+
+    function isAdmin() {
+      return role() == 'admin';
+    }
+
+    function isSupport() {
+      return role() == 'support' || isAdmin();
+    }
+
+    // role/status live in the auth custom claims (set server-side by a
+    // Cloud Function on user creation / admin action), never trust a
+    // client-writable field for authorization decisions.
+
+    // ---------- users ----------
+    match /users/{uid} {
+      allow read: if isSelf(uid) || isSupport();
+      // Users may update only their own non-sensitive profile fields.
+      // pinHash, role, status, twoFactorEnabled are excluded — those are
+      // Cloud-Function-only writes.
+      allow update: if isSelf(uid) &&
+        !('role' in request.resource.data.diff(resource.data).affectedKeys()) &&
+        !('status' in request.resource.data.diff(resource.data).affectedKeys()) &&
+        !('pinHash' in request.resource.data.diff(resource.data).affectedKeys()) &&
+        !('twoFactorEnabled' in request.resource.data.diff(resource.data).affectedKeys());
+      allow create: if false; // user docs are created by a Cloud Function auth trigger
+      allow delete: if false;
+    }
+
+    // ---------- wallets ----------
+    // No client writes, ever. All balance changes happen via Cloud
+    // Functions using the Admin SDK, which is not subject to these rules.
+    match /wallets/{uid} {
+      allow read: if isSelf(uid) || isSupport();
+      allow write: if false;
+    }
+
+    // ---------- transactions ----------
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() &&
+        (resource.data.fromUid == request.auth.uid ||
+         resource.data.toUid == request.auth.uid ||
+         isSupport());
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ---------- ledgerEntries ----------
+    match /ledgerEntries/{entryId} {
+      allow read: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isSupport());
+      allow write: if false;
+    }
+
+    // ---------- notifications ----------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      // Client may only flip `read`, nothing else.
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false; // Cloud Functions only
+    }
+
+    // ---------- auditLogs ----------
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only, immutable
+    }
+
+    // ---------- settings ----------
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false; // admin writes go through a callable fn that also audit-logs
+    }
+
+    // ---------- announcements ----------
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ---------- supportTickets ----------
+    match /supportTickets/{ticketId} {
+      allow read: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isSupport());
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isSupport());
+      allow delete: if false;
+    }
+
+    // ---------- withdrawalRequests ----------
+    match /withdrawalRequests/{requestId} {
+      allow read: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isSupport());
+      allow create: if false; // created via callable fn (validates balance server-side)
+      allow update, delete: if false; // approval flow is admin-fn only
+    }
+
+    // default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

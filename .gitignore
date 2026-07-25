@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+lib/
+out/
+build/
+
+# Environment / secrets — NEVER commit these
+.env
+.env.local
+.env*.local
+service-account.json
+*-service-account.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Test output
+coverage/

@@ -1,0 +1,14 @@
+{
+  "name": "paycore-sample-data",
+  "private": true,
+  "scripts": {
+    "seed": "ts-node seed.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}
