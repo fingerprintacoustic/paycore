@@ -49,7 +49,17 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
-      - run: npm test
+      - run: npm install -g firebase-tools
+      - name: Run functions tests against the Firestore emulator
+        # firebase.json lives at the repo root, not in functions/ — override
+        # this job's default working-directory so the CLI can find it, then
+        # cd back into functions/ for the actual test command.
+        working-directory: .
+        run: |
+          firebase emulators:exec \
+            --project demo-paycore \
+            --only firestore \
+            "cd functions && npm test"
 
   security-rules:
     runs-on: ubuntu-latest
