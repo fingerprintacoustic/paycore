@@ -33,6 +33,13 @@ jobs:
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "ci-placeholder.appspot.com"
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
           NEXT_PUBLIC_FIREBASE_APP_ID: "ci-placeholder"
+          # A throwaway, locally-generated RSA keypair wrapped in a
+          # syntactically valid (but entirely fake and unusable) service
+          # account shape. next build imports every API route to collect
+          # its metadata, and admin.ts initializes the Admin SDK at
+          # module-load time, so it needs SOMETHING parseable here — this
+          # build never makes a real Firebase call.
+          FIREBASE_SERVICE_ACCOUNT_KEY: '{"type":"service_account","project_id":"ci-placeholder","private_key_id":"ci-placeholder-key-id","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDd1djof/KGvmsw\nHFDCYzJ0pi7XztKMKY5n9AMebyuH9yFssCvxNuZ8Qci/iGyC0aaOgb5wR890VCb7\nkL6933L3BWOceARP49NZYUTjw7ylT4JZ3OZICfN84yp03HC1j9yNquU1nX1b7LWV\nhmAbc1RX2hwbtq8h34/+i1zHKmdaX9iEaQl09ZpChVGFbwzdHVSlibLYaZcORwbV\nwiv6eANUdKWrM/R9w2lsu0xF1nhgeLDFNn1gf604xoKzzD7+PsIN0ewBb/5QYALs\na7S9w6CS1h7Z0jRU/BL00fo3ouA/IX+mqIRDQThjTUb76tp1MqraV6vl+2GK3QEf\nLIAb6KY9AgMBAAECggEAAMg31IZ49Ko2UI7yMPHRXjnjpGp/lX2q4EV3VHRB6RkZ\n4Q/6WQQmQjiVoJLJrTiE2oz8yeIEVZIqHnDkSM8mXTSq88BI1dFkwLWmqmP6LtPY\nbi/F91oG/5DJYQUfSvlH1xPL0hJh0HgNinzpKulK4OqJV3A3NrinKxi1+g7jggRd\nqQJqgaQRON71ZMw7uCM57RARKPQeAS2sahIH+cGjF60o+PxtjcHDh2ELneJe5l+n\nE3COoOVlo4Rp7yi9gsLPKM02Kqy4BYRfoJi7eG4AkUK6Yz06doDYBtvOQFK2wwpn\nYJ9pglRewnHKIBSxH1zJ6iGqX1tVLIgtyv+eX6x5WQKBgQDz0yw8BRKK/kKq7hCL\nX8Ltjb5siXE1CdhAugm5PCytHfS/I5i3iSLdlV3+yuxqep5UAlNd/jYj0MM/nwm0\nXfHpc9K+9cepcAcNrmorpD7E8EjFAKDf/nXkG/Q+10SxdnfI50BHgr1xIOsjEInT\n9vh9MwkYRc8FSE5DuDKvgB5hBQKBgQDo6ZSxMHKucBxlRL/MEJEhz/vu6Hla3L4k\nb8p0cj7eomkKtinAHu02gHzjhnHvVVpVSsZbYH15hgFaRGrfp7w9YBCKMhxaE7Tc\nKWWq764tExhK+xXGrTKGC0ik55dWbop4kiprj/s1CkU/Gxed8L21OlZwjgJ/Dscy\nR34GtdcV2QKBgDWNOffsvUfd1FKqeuPBopR+P0ajYUPe56o/sgcHGmDjZW/dp5sX\n+ZplRgHCG+6/A6s734eTX9y560g76+u7fnhhwfXDEZk7S7FLj3IKXubuR21NWAga\nYVY6dYifyyyW8nQjplCOfIEuU7ad2Ue+xJDq9qJoIrHsUZQ6DpfRMdrpAoGAWKYO\n4iH+hEZHiIPSPGlR0/zFdvkkt2CtPlEOTaPuKe7G7DzJR0Z+IvBkmHTjiKSD7VK4\njK79EvPeL+06gEXnb7TQlsjb4az+eY2IFLeFI8LQzDkk4KmrQTmqPJmpEEyih6Ga\nY7Y5dsah9JLrOkIW8pNxswVaDeIiDxEG9qbfZoECgYEAjn1Cc91P5hYswCl1yIRi\nYNxiNmjNKMvWdpUdMkGX+clq8HhbvXJ3dhPUc3IVuR9h21JqdqMFgdZhnRfgL2x4\n4QByJDtPSFIO9fa/Z2uRIFZ/ynPYMeQd5P6Oni+9koQadjM1ZMizi0NJb1Iy5HQ8\n9nSUFCObNEIkqiT7mLbCKBM=\n-----END PRIVATE KEY-----\n","client_email":"ci-placeholder@ci-placeholder.iam.gserviceaccount.com","client_id":"000000000000000000000","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/ci-placeholder%40ci-placeholder.iam.gserviceaccount.com"}'
 
   functions:
     runs-on: ubuntu-latest
@@ -55,10 +62,6 @@ jobs:
           java-version: "21"
       - run: npm install -g firebase-tools
       - name: Run functions tests against the Firestore emulator
-        # Uses firebase.emulators.json (repo root, no hosting/frameworksBackend
-        # key) instead of the real firebase.json — sidesteps the
-        # "webframeworks experiment" requirement entirely, and avoids
-        # needing a valid project ID in .firebaserc for this CI-only run.
         working-directory: .
         run: |
           firebase emulators:exec \
