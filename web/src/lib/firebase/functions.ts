@@ -8,8 +8,9 @@ const functions = getFunctions(firebaseApp, "us-central1");
 export interface TransferFundsInput {
   requestId: string;
   toUid: string;
-  amount: number; // integer minor units (cents)
+  amount: number;
   note?: string;
+  stepUpToken: string;
 }
 export interface TransferFundsOutput {
   transactionId: string;
@@ -18,12 +19,13 @@ export interface TransferFundsOutput {
   newBalance: number | null;
 }
 
-export const transferFundsFn = httpsCallable<TransferFundsInput, TransferFundsOutput>(
-  functions,
-  "transferFunds"
-);
+export const transferFundsFn = httpsCallable<TransferFundsInput, TransferFundsOutput>(functions, "transferFunds");
 
-export const verifyPinFn = httpsCallable<{ pin: string }, { status: string }>(functions, "verifyPin");
+export const verifyPinFn = httpsCallable<
+  { pin: string },
+  { status: string; stepUpToken: string; expiresInSeconds: number }
+>(functions, "verifyPin");
+
 export const setPinFn = httpsCallable<{ pin: string }, { status: string }>(functions, "setPin");
 
 export const requestWithdrawalFn = httpsCallable<
@@ -31,12 +33,6 @@ export const requestWithdrawalFn = httpsCallable<
   { requestId: string; status: string }
 >(functions, "requestWithdrawal");
 
-/**
- * Client-side helper: generates a v4 UUID to use as the transfer's
- * idempotency key. Generated once per submit attempt and reused across
- * retries of the SAME attempt (e.g. a network timeout retry) — a fresh
- * key must only be generated for a genuinely new transfer.
- */
 export function newRequestId(): string {
   return crypto.randomUUID();
 }

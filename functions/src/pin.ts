@@ -2,11 +2,13 @@ import * as functions from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import * as bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
 
 const db = getFirestore();
 const PIN_REGEX = /^\d{4,6}$/;
 const MAX_PIN_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_MS = 15 * 60 * 1000;
+const STEP_UP_TTL_MS = 5 * 60 * 1000;
 
 async function writeAuditLog(actorUid: string, action: string, targetId: string) {
   const ref = db.collection("auditLogs").doc();
@@ -24,7 +26,6 @@ async function writeAuditLog(actorUid: string, action: string, targetId: string)
   });
 }
 
-/** First-time PIN creation, or a full reset (requires fresh re-auth on the client). */
 export const setPin = functions.onCall<{ pin: string }>(
   { enforceAppCheck: true },
   async (request) => {
@@ -40,23 +41,20 @@ export const setPin = functions.onCall<{ pin: string }>(
     }
 
     const pinHash = await bcrypt.hash(pin, 12);
+    const now = Timestamp.now();
     await db.collection("users").doc(uid).update({
       pinHash,
-      pinSetAt: Timestamp.now(),
+      pinSetAt: now,
       pinFailedAttempts: 0,
       pinLockedUntil: null,
-      updatedAt: Timestamp.now(),
+      updatedAt: now,
     });
     await writeAuditLog(uid, "user.pin_set", uid);
     return { status: "ok" };
   }
 );
 
-/**
- * Verifies a PIN entry for step-up auth (e.g. before confirming a
- * transfer). Locks out after MAX_PIN_ATTEMPTS failures for LOCKOUT_MS —
- * enforced server-side so it can't be bypassed by retrying from the client.
- */
+/** Verifies the PIN and returns a short-lived, single-use step-up token. */
 export const verifyPin = functions.onCall<{ pin: string }>(
   { enforceAppCheck: true },
   async (request) => {
@@ -69,7 +67,9 @@ export const verifyPin = functions.onCall<{ pin: string }>(
 
     const user = userSnap.data()!;
     const now = Date.now();
-
+    if (user.status && user.status !== "active") {
+      throw new HttpsError("failed-precondition", "Your account is not active.");
+    }
     if (user.pinLockedUntil && user.pinLockedUntil.toMillis() > now) {
       const minutesLeft = Math.ceil((user.pinLockedUntil.toMillis() - now) / 60000);
       throw new HttpsError("resource-exhausted", `Too many attempts. Try again in ${minutesLeft} min.`);
@@ -80,7 +80,6 @@ export const verifyPin = functions.onCall<{ pin: string }>(
 
     const { pin } = request.data;
     const isMatch = await bcrypt.compare(pin ?? "", user.pinHash);
-
     if (!isMatch) {
       const attempts = (user.pinFailedAttempts ?? 0) + 1;
       const update: Record<string, unknown> = { pinFailedAttempts: attempts };
@@ -94,11 +93,23 @@ export const verifyPin = functions.onCall<{ pin: string }>(
     }
 
     await userRef.update({ pinFailedAttempts: 0, pinLockedUntil: null });
-    return { status: "ok" };
+    const token = randomUUID();
+    const tokenRef = db.collection("stepUpTokens").doc(token);
+    await tokenRef.set({
+      uid,
+      purpose: "transfer",
+      createdAt: Timestamp.fromMillis(now),
+      expiresAt: Timestamp.fromMillis(now + STEP_UP_TTL_MS),
+      usedAt: null,
+    });
+    return { status: "ok", stepUpToken: token, expiresInSeconds: STEP_UP_TTL_MS / 1000 };
   }
 );
 
 function isWeakPin(pin: string): boolean {
-  const sequential = ["1234", "123456", "0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"];
-  return sequential.includes(pin);
+  const weak = [
+    "0000", "1111", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999",
+    "1234", "123456", "654321", "1212", "1122",
+  ];
+  return weak.includes(pin);
 }
