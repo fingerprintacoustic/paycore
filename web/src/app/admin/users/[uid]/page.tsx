@@ -22,8 +22,14 @@ async function getUserDetail(uid: string) {
   return { user: userSnap.data()!, wallet: walletSnap.data(), transactions };
 }
 
-export default async function AdminUserDetailPage({ params }: { params: { uid: string } }) {
-  const detail = await getUserDetail(params.uid);
+export default async function AdminUserDetailPage({
+  params,
+}: {
+  // Next.js 15 made dynamic route params async too (same change as cookies()).
+  params: Promise<{ uid: string }>;
+}) {
+  const { uid } = await params;
+  const detail = await getUserDetail(uid);
   if (!detail) notFound();
   const { user, wallet, transactions } = detail;
 
@@ -62,7 +68,7 @@ export default async function AdminUserDetailPage({ params }: { params: { uid: s
       </div>
 
       <div>
-        <AdminUserActions uid={params.uid} status={user.status} />
+        <AdminUserActions uid={uid} status={user.status} />
       </div>
     </div>
   );
