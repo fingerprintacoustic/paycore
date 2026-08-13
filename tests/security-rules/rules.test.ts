@@ -82,6 +82,13 @@ describe("users", () => {
   });
 
   it("denies a user unfreezing their own status field", async () => {
+    // Seed a genuinely different starting value first — updating a field
+    // to the SAME value it already has produces an empty diff() and the
+    // rule's exclusion never triggers, which made this test pass for the
+    // wrong reason (a no-op, not an actual blocked unfreeze).
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().collection("users").doc("alice").update({ status: "frozen" });
+    });
     const alice = testEnv.authenticatedContext("alice").firestore();
     await assertFails(updateDoc(doc(alice, "users/alice"), { status: "active" }));
   });

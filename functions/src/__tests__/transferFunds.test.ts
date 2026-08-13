@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
+import { randomUUID } from "node:crypto";
 import "./setup";
 
 initializeApp({ projectId: "demo-paycore" });
@@ -59,8 +60,9 @@ beforeEach(async () => {
 describe("transferFunds", () => {
   it("moves balance atomically and writes a completed transaction", async () => {
     const stepUpToken = await seedStepUpToken("alice");
+    const requestId = randomUUID();
     const result = await transferFunds.run(
-      callableRequest({ requestId: "req-1", toUid: "bob", amount: 2500, stepUpToken }, "alice")
+      callableRequest({ requestId, toUid: "bob", amount: 2500, stepUpToken }, "alice")
     );
 
     expect(result.status).toBe("completed");
@@ -71,7 +73,7 @@ describe("transferFunds", () => {
     expect(aliceWallet.balance).toBe(7500);
     expect(bobWallet.balance).toBe(2500);
 
-    const tx = (await db.collection("transactions").doc("req-1").get()).data()!;
+    const tx = (await db.collection("transactions").doc(requestId).get()).data()!;
     expect(tx.status).toBe("completed");
     expect(tx.amount).toBe(2500);
 
@@ -82,7 +84,8 @@ describe("transferFunds", () => {
 
   it("is idempotent - replaying the same requestId does not double-spend", async () => {
     const stepUpToken = await seedStepUpToken("alice");
-    const request = callableRequest({ requestId: "req-2", toUid: "bob", amount: 1000, stepUpToken }, "alice");
+    const requestId = randomUUID();
+    const request = callableRequest({ requestId, toUid: "bob", amount: 1000, stepUpToken }, "alice");
 
     await transferFunds.run(request);
     await transferFunds.run(request); // simulate a client retry with the same requestId
@@ -95,7 +98,7 @@ describe("transferFunds", () => {
   it("rejects a transfer that exceeds the sender's balance", async () => {
     const stepUpToken = await seedStepUpToken("alice");
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-3", toUid: "bob", amount: 999999, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 999999, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("Insufficient balance") });
 
     const aliceWallet = (await db.collection("wallets").doc("alice").get()).data()!;
@@ -106,34 +109,41 @@ describe("transferFunds", () => {
     await db.collection("wallets").doc("alice").update({ status: "frozen" });
     const stepUpToken = await seedStepUpToken("alice");
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-4", toUid: "bob", amount: 100, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("frozen") });
   });
 
   it("rejects sending money to yourself", async () => {
     const stepUpToken = await seedStepUpToken("alice");
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-5", toUid: "alice", amount: 100, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "alice", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("yourself") });
   });
 
   it("rejects an unauthenticated request", async () => {
-    const request = { data: { requestId: "req-6", toUid: "bob", amount: 100, stepUpToken: "irrelevant" }, auth: undefined } as never;
+    const request = { data: { requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken: "irrelevant" }, auth: undefined } as never;
     await expect(transferFunds.run(request)).rejects.toBeInstanceOf(HttpsError);
+  });
+
+  it("rejects a malformed (non-UUID) requestId", async () => {
+    const stepUpToken = await seedStepUpToken("alice");
+    await expect(
+      transferFunds.run(callableRequest({ requestId: "not-a-uuid", toUid: "bob", amount: 100, stepUpToken }, "alice"))
+    ).rejects.toMatchObject({ message: expect.stringContaining("Invalid requestId") });
   });
 
   // ---- step-up token specific coverage ----
 
   it("rejects a transfer with no step-up token at all", async () => {
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-7", toUid: "bob", amount: 100 }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100 }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("PIN verification required") });
   });
 
   it("rejects an expired step-up token", async () => {
     const stepUpToken = await seedStepUpToken("alice", { expiresInMs: -1000 }); // already expired
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-8", toUid: "bob", amount: 100, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("expired") });
   });
 
@@ -141,24 +151,24 @@ describe("transferFunds", () => {
     const bobsToken = await seedStepUpToken("bob");
     await expect(
       // alice tries to use bob's token
-      transferFunds.run(callableRequest({ requestId: "req-9", toUid: "bob", amount: 100, stepUpToken: bobsToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken: bobsToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("Invalid verification token") });
   });
 
   it("rejects a step-up token that was created for a different purpose", async () => {
     const stepUpToken = await seedStepUpToken("alice", { purpose: "withdrawal" });
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-10", toUid: "bob", amount: 100, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("Invalid verification token") });
   });
 
   it("rejects reusing an already-used step-up token", async () => {
     const stepUpToken = await seedStepUpToken("alice");
-    await transferFunds.run(callableRequest({ requestId: "req-11", toUid: "bob", amount: 100, stepUpToken }, "alice"));
+    await transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"));
 
     // Same token, a second (different) transfer attempt.
     await expect(
-      transferFunds.run(callableRequest({ requestId: "req-12", toUid: "bob", amount: 100, stepUpToken }, "alice"))
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("already used") });
   });
 });
