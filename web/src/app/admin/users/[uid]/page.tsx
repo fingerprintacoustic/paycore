@@ -12,8 +12,10 @@ async function getUserDetail(uid: string) {
 
   if (!userSnap.exists) return null;
 
-  const transactions = [...sentSnap.docs, ...receivedSnap.docs]
-    .map((d) => ({ id: d.id, ...d.data() }))
+  const transactions = ([...sentSnap.docs, ...receivedSnap.docs].map((d) => ({
+    id: d.id,
+    ...d.data(),
+  })) as any[])
     .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
     .slice(0, 10);
 

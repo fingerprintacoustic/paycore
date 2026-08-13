@@ -11,7 +11,9 @@ import type { DecodedIdToken } from "firebase-admin/auth";
  * on middleware alone.
  */
 export async function getServerUser(): Promise<DecodedIdToken | null> {
-  const sessionCookie = cookies().get("session")?.value;
+  // Next.js 15 made cookies() async (it used to return the store directly).
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
   if (!sessionCookie) return null;
 
   try {
