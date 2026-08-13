@@ -85,4 +85,4 @@ jobs:
             --project demo-paycore \
             --config firebase.emulators.json \
             --only firestore \
-            "cd tests/security-rules && npm ci && npm test"
+            "cd tests/security-rules && npm install && npm test"

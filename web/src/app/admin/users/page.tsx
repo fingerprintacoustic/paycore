@@ -32,8 +32,14 @@ async function searchUsers(term: string | undefined): Promise<UserRow[]> {
   });
 }
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: { q?: string } }) {
-  const users = await searchUsers(searchParams.q);
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  // Next.js 15 made searchParams async too (same change as params/cookies()).
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
+  const users = await searchUsers(q);
 
   return (
     <div className="space-y-6">
@@ -43,7 +49,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: {
         <input
           type="text"
           name="q"
-          defaultValue={searchParams.q}
+          defaultValue={q}
           placeholder="Search by email, phone, or account ID"
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-brand-500 focus:outline-none"
         />
