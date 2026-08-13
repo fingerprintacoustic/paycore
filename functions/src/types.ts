@@ -1,6 +1,3 @@
-// Shared types — import into both functions/ and the Next.js app via a
-// workspace package (e.g. packages/shared) in the full monorepo layout.
-
 export type UserRole = "user" | "admin" | "support";
 export type UserStatus = "active" | "frozen" | "pending_verification";
 
@@ -20,7 +17,7 @@ export interface UserDoc {
 
 export interface WalletDoc {
   uid: string;
-  balance: number; // integer minor units
+  balance: number;
   currency: string;
   status: "active" | "frozen";
   version: number;
@@ -37,7 +34,7 @@ export interface TransactionDoc {
   status: TransactionStatus;
   fromUid: string | null;
   toUid: string | null;
-  amount: number; // integer minor units, always positive
+  amount: number;
   currency: string;
   note: string | null;
   referenceNumber: string;
@@ -48,15 +45,16 @@ export interface TransactionDoc {
 }
 
 export interface TransferFundsRequest {
-  requestId: string; // client-generated UUID, used as idempotency key
+  requestId: string;
   toUid: string;
-  amount: number; // integer minor units
+  amount: number;
   note?: string;
+  stepUpToken: string;
 }
 
 export interface TransferFundsResponse {
   transactionId: string;
   status: TransactionStatus;
   referenceNumber: string;
-  newBalance: number;
+  newBalance: number | null;
 }
