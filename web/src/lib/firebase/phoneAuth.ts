@@ -10,24 +10,29 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 
-let recaptchaVerifier: RecaptchaVerifier | null = null;
-
-/** Must be called after the container element is mounted in the DOM. */
-export function getRecaptchaVerifier(containerId: string): RecaptchaVerifier {
-  if (!recaptchaVerifier) {
-    recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      size: "invisible",
-    });
-  }
-  return recaptchaVerifier;
-}
-
+/**
+ * A fresh RecaptchaVerifier is created for every send attempt.
+ *
+ * RecaptchaVerifier is single-use in practice: after a failed send its cached
+ * token is invalid or expired, and the SDK will keep re-submitting that dead
+ * token on retry, which surfaces as auth/invalid-app-credential. Clearing and
+ * re-creating per attempt is the pattern the Firebase docs prescribe
+ * ("If signInWithPhoneNumber results in an error, reset the reCAPTCHA").
+ */
 export async function sendPhoneOtp(
   phoneNumber: string,
-  containerId: string
+  container: HTMLElement
 ): Promise<ConfirmationResult> {
-  const verifier = getRecaptchaVerifier(containerId);
-  return signInWithPhoneNumber(auth, phoneNumber, verifier);
+  const verifier = new RecaptchaVerifier(auth, container, {
+    size: "invisible",
+  });
+  try {
+    return await signInWithPhoneNumber(auth, phoneNumber, verifier);
+  } catch (error) {
+    // Release the rendered widget so the next attempt starts clean.
+    verifier.clear();
+    throw error;
+  }
 }
 
 /**

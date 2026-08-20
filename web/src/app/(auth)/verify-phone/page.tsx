@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { ConfirmationResult } from "firebase/auth";
 import { useAuth } from "@/context/AuthContext";
@@ -9,11 +9,13 @@ import { AuthCard } from "@/components/ui/AuthCard";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-const RECAPTCHA_CONTAINER_ID = "recaptcha-container";
-
 export default function VerifyPhonePage() {
   const { user } = useAuth();
   const router = useRouter();
+  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
+  // Bump to remount the container between attempts so a fresh, empty element
+  // is handed to each new RecaptchaVerifier.
+  const [recaptchaKey, setRecaptchaKey] = useState(0);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
@@ -28,10 +30,14 @@ export default function VerifyPhonePage() {
       // Expect E.164 format, e.g. +14155551234 — validate/format with a
       // proper phone input component (e.g. react-phone-number-input) rather
       // than trusting free text in production.
-      const result = await sendPhoneOtp(phone, RECAPTCHA_CONTAINER_ID);
+      if (!recaptchaContainerRef.current) {
+        throw new Error("reCAPTCHA container not mounted");
+      }
+      const result = await sendPhoneOtp(phone, recaptchaContainerRef.current);
       setConfirmation(result);
     } catch {
       setError("Couldn't send the code. Check the number and try again.");
+      setRecaptchaKey((k) => k + 1);
     } finally {
       setLoading(false);
     }
@@ -80,7 +86,7 @@ export default function VerifyPhonePage() {
             onChange={(e) => setPhone(e.target.value)}
           />
           {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
-          <div id={RECAPTCHA_CONTAINER_ID} />
+          <div key={recaptchaKey} ref={recaptchaContainerRef} />
           <Button type="submit" loading={loading}>
             Send code
           </Button>
