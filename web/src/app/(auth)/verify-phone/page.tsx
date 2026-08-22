@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ConfirmationResult } from "firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 import { sendPhoneOtp, confirmAndLinkPhone } from "@/lib/firebase/phoneAuth";
+import { markPhoneVerifiedFn } from "@/lib/firebase/functions";
 import { AuthCard } from "@/components/ui/AuthCard";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -50,9 +51,16 @@ export default function VerifyPhonePage() {
     setLoading(true);
     try {
       await confirmAndLinkPhone(confirmation, otp, user);
+      // The phone is now on the Auth record; flip the account to active and
+      // sync phone/searchTokens so the dashboard, PIN, and transfers unlock.
+      await markPhoneVerifiedFn({});
       router.push("/dashboard");
-    } catch {
-      setError("That code didn't match. Please try again.");
+    } catch (err) {
+      setError(
+        err instanceof Error && /already been linked|provider-already-linked|credential-already/i.test(err.message)
+          ? "This phone number is already linked to another account."
+          : "That code didn't match. Please try again."
+      );
     } finally {
       setLoading(false);
     }

@@ -65,6 +65,42 @@ No PIN set yet: `failed-precondition`.
 
 ---
 
+## `markPhoneVerified`
+
+Called once, right after the client links a verified phone number to the
+signed-in account (`linkWithCredential`). The client never asserts a status —
+this function reads the Firebase **Auth record** for the caller and, only if a
+phone number is present there, flips `users/{uid}.status` from
+`pending_verification` to `active` and syncs `phone` + `searchTokens`.
+
+```ts
+// request: {} (no fields — the Auth record is the source of truth)
+// response: { status: "activated" | "already_active" }
+```
+
+Idempotent. Refuses to touch a `frozen` account (`failed-precondition`) — that
+is the admin-only `reactivateAccount` path. `failed-precondition` if no phone
+is on the Auth record yet (client raced the account-link write, or is lying).
+
+---
+
+## `lookupRecipient`
+
+Directory search for the send-money flow. Client-side queries on `/users` are
+denied by security rules (`isSelf || isSupport`) — intentionally — so this
+callable runs the `searchTokens` lookup with the Admin SDK and returns only
+**masked** fields a sender needs to confirm they picked the right person.
+
+```ts
+// request: { query: string }   // email or phone, min 3 chars
+// response: { results: [{ uid, displayName, maskedEmail, maskedPhone }] }
+```
+
+Never returns the caller, and only returns `active` accounts. Max 5 results.
+`invalid-argument` if the query is under 3 characters.
+
+---
+
 ## `start2FAEnrollment` / `confirm2FAEnrollment` / `verify2FACode` / `disable2FA`
 
 Standard TOTP (works with Google Authenticator, Authy, etc.).
