@@ -8,6 +8,8 @@ initializeApp();
 export { transferFunds } from "./transferFunds";
 export { onUserCreated, onUserDeleted } from "./auth";
 export { setPin, verifyPin } from "./pin";
+export { markPhoneVerified } from "./phoneVerification";
+export { lookupRecipient } from "./recipientLookup";
 export { start2FAEnrollment, confirm2FAEnrollment, verify2FACode, disable2FA } from "./twoFactor";
 export { adminCreditWallet, requestWithdrawal, reviewWithdrawal } from "./deposits_withdrawals";
 export { adminDebitWallet, freezeAccount, reactivateAccount } from "./adminAccounts";

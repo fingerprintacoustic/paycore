@@ -35,8 +35,8 @@ displayName: string
 photoURL: string | null
 address: { line1, line2?, city, region, postalCode, country } | null
 role: "user" | "admin" | "support"
-status: "active" | "frozen" | "pending_verification"
-pinHash: string | null        // Argon2id hash, set via callable fn only
+status: "active" | "frozen" | "pending_verification"  // created as pending_verification; markPhoneVerified flips to active once a phone is linked
+pinHash: string | null        // bcrypt hash, set via callable fn only
 pinSetAt: Timestamp | null
 twoFactorEnabled: boolean
 emailVerified: boolean
@@ -178,6 +178,7 @@ payoutDetails: object            // bank/mobile-money details, MVP: free text
 - `notifications`: `(uid ASC, read ASC, createdAt DESC)`
 - `auditLogs`: `(targetType ASC, targetId ASC, createdAt DESC)`
 - `withdrawalRequests`: `(status ASC, requestedAt ASC)`
+- `users`: `(searchTokens CONTAINS)` — backs the `lookupRecipient` directory search
 
 ## Search strategy
 

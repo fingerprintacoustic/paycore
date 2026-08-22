@@ -56,6 +56,19 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white/70 p-5 backdrop-blur-sm dark:border-white/10 dark:bg-white/5">
+        <h2 className="font-display text-sm font-semibold text-slate-800 dark:text-slate-100">Security</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Transfer PIN</p>
+            <p className="text-xs text-slate-400">Required to confirm every transfer.</p>
+          </div>
+          <a href="/dashboard/security" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+            Manage
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
