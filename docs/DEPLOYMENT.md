@@ -9,7 +9,17 @@
    with `enforceAppCheck: true`. In the Firebase console, go to
    **App Check**, register your web app with **reCAPTCHA Enterprise** (or
    v3), and put the site key in `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY`.
-   Skipping this means every callable function will reject all requests.
+   If you chose Enterprise, also set
+   `NEXT_PUBLIC_FIREBASE_APPCHECK_PROVIDER=enterprise` (the web client
+   defaults to the v3 provider). Skipping this means every callable function
+   will reject all requests.
+
+   For **local development**, reCAPTCHA will not issue tokens for
+   `localhost`. Register a debug token instead: run the app once with
+   `NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN=true` in `web/.env.local`,
+   copy the token the SDK prints to the browser console, add it in the
+   console under **App Check > Apps > Manage debug tokens**, then set
+   `NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN` to that token.
 3. **Bootstrap your first admin** — see `docs/INSTALLATION.md` step 6.
    Do this against your production project once it's live, using a real
    account you control.
