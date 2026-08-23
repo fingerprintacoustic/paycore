@@ -4,6 +4,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { initAppCheck } from "@/lib/firebase/appCheck";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -21,5 +22,7 @@ export const auth: Auth = getAuth(firebaseApp);
 export const db: Firestore = getFirestore(firebaseApp);
 export const storage: FirebaseStorage = getStorage(firebaseApp);
 
-// App Check is initialized separately in AppCheckProvider (client-only,
-// needs to run after window exists) — see context/AppCheckProvider.tsx.
+// App Check must be live before the first callable/Firestore request — every
+// callable enforces it server-side. Module scope (not a React effect) so it
+// beats any child-component mount effect; initAppCheck no-ops during SSR.
+initAppCheck(firebaseApp);
