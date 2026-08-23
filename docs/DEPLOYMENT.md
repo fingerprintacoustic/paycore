@@ -41,7 +41,11 @@ push to `main`.
    - `NEXT_PUBLIC_FIREBASE_VAPID_KEY`
    - `FIREBASE_PROJECT_ID` — your actual Firebase project ID
    - `FIREBASE_SERVICE_ACCOUNT` — the full service account JSON (same one
-     from installation step 1.7)
+     from installation step 1.7), used by the deploy step
+   - `FIREBASE_SERVICE_ACCOUNT_KEY` — the same service account JSON, used
+     by the web build (the Admin SDK initializes at module-load time)
+   - `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` — the App Check site key
+     from setup step 2 above (baked into the web bundle at build time)
 
 2. **A note if you usually upload files through the GitHub web UI**:
    browser drag-and-drop silently excludes dot-folders like
