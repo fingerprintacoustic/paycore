@@ -28,6 +28,22 @@ export const verifyPinFn = httpsCallable<
 
 export const setPinFn = httpsCallable<{ pin: string }, { status: string }>(functions, "setPin");
 
+export const markPhoneVerifiedFn = httpsCallable<Record<string, never>, { status: string }>(
+  functions,
+  "markPhoneVerified"
+);
+
+export interface LookupRecipientResult {
+  uid: string;
+  displayName: string;
+  maskedEmail: string | null;
+  maskedPhone: string | null;
+}
+export const lookupRecipientFn = httpsCallable<{ query: string }, { results: LookupRecipientResult[] }>(
+  functions,
+  "lookupRecipient"
+);
+
 export const requestWithdrawalFn = httpsCallable<
   { amount: number; payoutDetails: Record<string, string> },
   { requestId: string; status: string }

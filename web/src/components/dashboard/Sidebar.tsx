@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Send, QrCode, Landmark, User, Settings } from "lucide-react";
+import { LayoutDashboard, Send, QrCode, Landmark, User, Settings, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/receive", label: "Receive", icon: QrCode },
   { href: "/dashboard/wallet", label: "Wallet", icon: Landmark },
   { href: "/dashboard/profile", label: "Profile", icon: User },
+  { href: "/dashboard/security", label: "Security", icon: ShieldCheck },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
