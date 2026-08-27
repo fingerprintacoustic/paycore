@@ -55,6 +55,8 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
           channelId: live
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks
 
       - name: Deploy Cloud Functions, Firestore rules/indexes, Storage rules
         run: |
