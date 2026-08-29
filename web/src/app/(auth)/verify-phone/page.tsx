@@ -8,6 +8,7 @@ import { sendPhoneOtp, confirmAndLinkPhone } from "@/lib/firebase/phoneAuth";
 import { markPhoneVerifiedFn } from "@/lib/firebase/functions";
 import { AuthCard } from "@/components/ui/AuthCard";
 import { Input } from "@/components/ui/Input";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 import { Button } from "@/components/ui/Button";
 
 export default function VerifyPhonePage() {
@@ -17,6 +18,9 @@ export default function VerifyPhonePage() {
   // Bump to remount the container between attempts so a fresh, empty element
   // is handed to each new RecaptchaVerifier.
   const [recaptchaKey, setRecaptchaKey] = useState(0);
+  // Holds the final, properly-formatted E.164 number (e.g. "+263771234567"),
+  // built by PhoneInput from whatever country + local number the user picks
+  // and typed — sendPhoneOtp never sees raw, unformatted user input.
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
@@ -26,11 +30,12 @@ export default function VerifyPhonePage() {
   async function handleSendOtp(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!phone) {
+      setError("Enter your phone number.");
+      return;
+    }
     setLoading(true);
     try {
-      // Expect E.164 format, e.g. +14155551234 — validate/format with a
-      // proper phone input component (e.g. react-phone-number-input) rather
-      // than trusting free text in production.
       if (!recaptchaContainerRef.current) {
         throw new Error("reCAPTCHA container not mounted");
       }
@@ -83,16 +88,7 @@ export default function VerifyPhonePage() {
     >
       {!confirmation ? (
         <form onSubmit={handleSendOtp} className="space-y-4" noValidate>
-          <Input
-            label="Phone number"
-            type="tel"
-            name="phone"
-            placeholder="+1 415 555 1234"
-            autoComplete="tel"
-            required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+          <PhoneInput onChange={setPhone} required />
           {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
           <div key={recaptchaKey} ref={recaptchaContainerRef} />
           <Button type="submit" loading={loading}>

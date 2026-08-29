@@ -15,7 +15,7 @@ function generateReferenceNumber(): string {
 }
 
 export const transferFunds = functions.onCall<TransferFundsRequest>(
-  { region: "us-central1", enforceAppCheck: false },
+  { region: "us-central1", enforceAppCheck: true,
   async (request): Promise<TransferFundsResponse> => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");

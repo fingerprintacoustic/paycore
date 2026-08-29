@@ -12,7 +12,7 @@ export const upsertAnnouncement = functions.onCall<{
   audience: "all" | "verified_only";
   active: boolean;
   expiresAt?: string; // ISO date, optional
-}>({ enforceAppCheck: false }, async (request) => {
+}>({ enforceAppCheck: true,
   const adminUid = await requireAdmin(request.auth?.uid);
   const { announcementId, title, body, audience, active, expiresAt } = request.data;
 
@@ -51,7 +51,7 @@ export const upsertAnnouncement = functions.onCall<{
 });
 
 export const deleteAnnouncement = functions.onCall<{ announcementId: string }>(
-  { enforceAppCheck: false },
+  { enforceAppCheck: true,
   async (request) => {
     const adminUid = await requireAdmin(request.auth?.uid);
     const { announcementId } = request.data;
@@ -73,7 +73,7 @@ export const updateSettings = functions.onCall<{
   maxTransferAmount?: number;
   dailyTransferLimit?: number;
   withdrawalRequiresApproval?: boolean;
-}>({ enforceAppCheck: false }, async (request) => {
+}>({ enforceAppCheck: true,
   const adminUid = await requireAdmin(request.auth?.uid);
   const before = (await db.collection("settings").doc("global").get()).data() ?? null;
 

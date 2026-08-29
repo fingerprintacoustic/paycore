@@ -10,7 +10,7 @@ export const adminDebitWallet = functions.onCall<{
   targetUid: string;
   amount: number;
   note?: string;
-}>({ enforceAppCheck: false }, async (request) => {
+}>({ enforceAppCheck: true,
   const adminUid = await requireAdmin(request.auth?.uid);
   const { targetUid, amount, note } = request.data;
 
@@ -93,7 +93,7 @@ export const adminDebitWallet = functions.onCall<{
  * minutes rather than waiting for their token to naturally expire.
  */
 export const freezeAccount = functions.onCall<{ targetUid: string; reason?: string }>(
-  { enforceAppCheck: false },
+  { enforceAppCheck: true,
   async (request) => {
     const adminUid = await requireAdmin(request.auth?.uid);
     const { targetUid, reason } = request.data;
@@ -119,7 +119,7 @@ export const freezeAccount = functions.onCall<{ targetUid: string; reason?: stri
 );
 
 export const reactivateAccount = functions.onCall<{ targetUid: string }>(
-  { enforceAppCheck: false },
+  { enforceAppCheck: true,
   async (request) => {
     const adminUid = await requireAdmin(request.auth?.uid);
     const { targetUid } = request.data;

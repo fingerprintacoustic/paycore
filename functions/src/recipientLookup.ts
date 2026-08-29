@@ -33,7 +33,7 @@ function maskPhone(phone: string): string {
  * picked the right person.
  */
 export const lookupRecipient = functions.onCall<{ query: string }>(
-  { enforceAppCheck: false },
+  { enforceAppCheck: true,
   async (request): Promise<{ results: LookupRecipientResult[] }> => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
