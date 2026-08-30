@@ -15,7 +15,7 @@ function generateReferenceNumber(): string {
 }
 
 export const transferFunds = functions.onCall<TransferFundsRequest>(
-  { region: "us-central1", enforceAppCheck: true,
+  { region: "us-central1", enforceAppCheck: true },
   async (request): Promise<TransferFundsResponse> => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -129,7 +129,7 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
       const senderNotifRef = db.collection("notifications").doc();
       tx.set(senderNotifRef, { uid, type: "transfer_sent", title: "Transfer sent", body: `You sent ${(amount / 100).toFixed(2)} ${fromWallet.currency} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
       const recipientNotifRef = db.collection("notifications").doc();
-      tx.set(recipientNotifRef, { uid: toUid, type: "transfer_received", title: "Money received", body: `You received ${(amount / 100).toFixed(2)} ${fromWallet.currency} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
+      tx.set(recipientNotifRef, { uid: toUid, type: "transfer_received", title: "Money received",body: `You received ${(amount / 100).toFixed(2)} ${fromWallet.currency} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
 
       const auditRef = db.collection("auditLogs").doc();
       tx.set(auditRef, { id: auditRef.id, actorUid: uid, actorRole: "user", action: "transaction.transfer", targetType: "transaction", targetId: requestId, before: null, after: { fromUid: uid, toUid, amount, referenceNumber }, ip: null, createdAt: now });

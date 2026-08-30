@@ -27,7 +27,7 @@ async function writeAuditLog(actorUid: string, action: string, targetId: string)
 }
 
 export const setPin = functions.onCall<{ pin: string }>(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -56,7 +56,7 @@ export const setPin = functions.onCall<{ pin: string }>(
 
 /** Verifies the PIN and returns a short-lived, single-use step-up token. */
 export const verifyPin = functions.onCall<{ pin: string }>(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");

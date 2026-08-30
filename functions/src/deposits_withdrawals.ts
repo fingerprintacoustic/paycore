@@ -18,7 +18,7 @@ export const adminCreditWallet = functions.onCall<{
   targetUid: string;
   amount: number;
   note?: string;
-}>({ enforceAppCheck: true,
+}>({ enforceAppCheck: true }, async (request) => {
   const adminUid = await requireAdmin(request.auth?.uid);
   const { targetUid, amount, note } = request.data;
 
@@ -99,7 +99,7 @@ export const adminCreditWallet = functions.onCall<{
 export const requestWithdrawal = functions.onCall<{
   amount: number;
   payoutDetails: Record<string, string>;
-}>({ enforceAppCheck: true,
+}>({ enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
@@ -159,7 +159,7 @@ export const requestWithdrawal = functions.onCall<{
 export const reviewWithdrawal = functions.onCall<{
   requestId: string;
   decision: "approved" | "rejected";
-}>({ enforceAppCheck: true,
+}>({ enforceAppCheck: true }, async (request) => {
   const adminUid = await requireAdmin(request.auth?.uid);
   const { requestId, decision } = request.data;
 

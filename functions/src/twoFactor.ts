@@ -17,7 +17,7 @@ authenticator.options = { window: 1 };
  * after the user proves they can generate a valid code with it.
  */
 export const start2FAEnrollment = functions.onCall(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     const email = request.auth?.token.email;
@@ -39,7 +39,7 @@ export const start2FAEnrollment = functions.onCall(
 
 /** Step 2: user enters a code from their authenticator app to confirm setup. */
 export const confirm2FAEnrollment = functions.onCall<{ code: string }>(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -83,7 +83,7 @@ export const confirm2FAEnrollment = functions.onCall<{ code: string }>(
 
 /** Used at login step-up and for disabling 2FA (require a fresh valid code either way). */
 export const verify2FACode = functions.onCall<{ code: string }>(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -100,7 +100,7 @@ export const verify2FACode = functions.onCall<{ code: string }>(
 );
 
 export const disable2FA = functions.onCall<{ code: string }>(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");

@@ -27,7 +27,7 @@ function buildSearchTokens(email?: string, phone?: string): string[] {
  * request payload.
  */
 export const markPhoneVerified = functions.onCall(
-  { enforceAppCheck: true,
+  { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
