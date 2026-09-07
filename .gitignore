@@ -6,6 +6,7 @@ node_modules/
 functions/lib/
 out/
 build/
+*.tsbuildinfo
 
 # Environment / secrets — NEVER commit these
 .env
