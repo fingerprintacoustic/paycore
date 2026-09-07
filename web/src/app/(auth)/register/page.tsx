@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { AuthCard } from "@/components/ui/AuthCard";
@@ -15,6 +15,12 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // See the note in login/page.tsx — before hydration the form's onSubmit isn't
+  // attached and a click does a native GET submission (a silent reload with the
+  // email and password in the URL). Gate the submit button on hydration.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -76,7 +82,7 @@ export default function RegisterPage() {
             {error}
           </p>
         )}
-        <Button type="submit" loading={loading}>
+        <Button type="submit" loading={loading} disabled={!hydrated}>
           Continue
         </Button>
       </form>
