@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { COUNTRIES, DEFAULT_COUNTRY_ISO, toE164, type CountryOption } from "@/lib/phoneCountries";
+import { COUNTRIES, DEFAULT_COUNTRY, DEFAULT_COUNTRY_ISO, toE164, type CountryOption } from "@/lib/phoneCountries";
 
 interface PhoneInputProps {
   /** Called with a properly formatted E.164 number every time it changes. */
@@ -24,7 +24,7 @@ export function PhoneInput({ onChange, required }: PhoneInputProps) {
     }
   }, []);
 
-  const country = COUNTRIES.find((c) => c.iso === countryIso) ?? COUNTRIES[0];
+  const country = COUNTRIES.find((c) => c.iso === countryIso) ?? DEFAULT_COUNTRY;
 
   useEffect(() => {
     onChange(localNumber ? toE164(country, localNumber) : "");
