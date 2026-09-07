@@ -20,8 +20,10 @@ export interface CountryOption {
   stripsLeadingZero: boolean;
 }
 
+const US: CountryOption = { iso: "US", name: "United States", dialCode: "+1", stripsLeadingZero: false };
+
 export const COUNTRIES: CountryOption[] = [
-  { iso: "US", name: "United States", dialCode: "+1", stripsLeadingZero: false },
+  US,
   { iso: "CA", name: "Canada", dialCode: "+1", stripsLeadingZero: false },
   { iso: "GB", name: "United Kingdom", dialCode: "+44", stripsLeadingZero: true },
   { iso: "ZW", name: "Zimbabwe", dialCode: "+263", stripsLeadingZero: true },
@@ -54,7 +56,14 @@ export const COUNTRIES: CountryOption[] = [
   { iso: "MZ", name: "Mozambique", dialCode: "+258", stripsLeadingZero: false },
 ];
 
-export const DEFAULT_COUNTRY_ISO = "US";
+/**
+ * The fallback country, used when no selection has been made yet and when a
+ * lookup by ISO code misses. A concrete value (not COUNTRIES[0], which is
+ * `CountryOption | undefined` under noUncheckedIndexedAccess) so callers get
+ * a guaranteed-defined country without a non-null assertion.
+ */
+export const DEFAULT_COUNTRY: CountryOption = US;
+export const DEFAULT_COUNTRY_ISO = US.iso;
 
 /**
  * Combines a selected country's dial code with a locally-typed number into
