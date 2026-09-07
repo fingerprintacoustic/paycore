@@ -1,7 +1,18 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
 import type { DecodedIdToken } from "firebase-admin/auth";
+
+/**
+ * Build the /login?next=… URL for a protected layout that has just rejected
+ * the session. The path comes from the x-pathname header the middleware sets;
+ * `fallback` covers the case where middleware didn't run (e.g. a route added
+ * to a layout but not to the middleware matcher).
+ */
+export async function loginUrlWithNext(fallback = "/dashboard"): Promise<string> {
+  const path = (await headers()).get("x-pathname") || fallback;
+  return `/login?next=${encodeURIComponent(path)}`;
+}
 
 /**
  * The authoritative auth check. Middleware only confirms a cookie exists;

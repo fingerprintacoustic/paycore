@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getServerUser } from "@/lib/auth/getServerUser";
+import { getServerUser, loginUrlWithNext } from "@/lib/auth/getServerUser";
 import { adminDb } from "@/lib/firebase/admin";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TopBar } from "@/components/dashboard/TopBar";
@@ -9,7 +9,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // verification against Firebase, with revocation checking, run on every
   // request to a protected route.
   const user = await getServerUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginUrlWithNext());
 
   // Freeze status lives in Firestore, not the auth token's custom claims —
   // claims only refresh on sign-in/force-refresh, so an admin freeze

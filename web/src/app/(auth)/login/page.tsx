@@ -7,11 +7,19 @@ import { AuthCard } from "@/components/ui/AuthCard";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-// Only same-origin absolute paths are safe redirect targets — reject
-// protocol-relative ("//evil.com") and absolute URLs to avoid an open redirect.
+// Only same-origin absolute paths are safe redirect targets. Reject anything
+// that could escape the origin: absolute URLs, protocol-relative ("//evil.com"),
+// and backslash variants ("/\evil.com", which some browsers normalise to "//").
 function safeNext(raw: string | null): string | null {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
-  return raw;
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  try {
+    const u = new URL(raw, "http://localhost");
+    if (u.origin !== "http://localhost") return null;
+    const path = u.pathname + u.search + u.hash;
+    return path.startsWith("//") ? null : path;
+  } catch {
+    return null;
+  }
 }
 
 export default function LoginPage() {
