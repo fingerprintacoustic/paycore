@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase/admin";
+import { SESSION_COOKIE } from "@/lib/sessionCookie";
 
 // Firebase ID tokens expire after 1 hour and aren't meant to live in a
 // cookie. We exchange the ID token for a long-lived session cookie that's
 // httpOnly + secure + sameSite, so it's invisible to client JS (XSS-safe)
 // and not sent cross-site (CSRF-resistant). Server components / middleware
 // verify this cookie on every request via adminAuth.verifySessionCookie.
+// It's named __session because Firebase Hosting strips every other cookie
+// before the request reaches this backend — see @/lib/sessionCookie.
 
 const SESSION_EXPIRES_IN_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
@@ -28,7 +31,7 @@ export async function POST(req: NextRequest) {
     });
 
     const res = NextResponse.json({ status: "ok" });
-    res.cookies.set("session", sessionCookie, {
+    res.cookies.set(SESSION_COOKIE, sessionCookie, {
       maxAge: SESSION_EXPIRES_IN_MS / 1000,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -43,6 +46,6 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE() {
   const res = NextResponse.json({ status: "ok" });
-  res.cookies.set("session", "", { maxAge: 0, path: "/" });
+  res.cookies.set(SESSION_COOKIE, "", { maxAge: 0, path: "/" });
   return res;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
+import { SESSION_COOKIE } from "@/lib/sessionCookie";
 import type { DecodedIdToken } from "firebase-admin/auth";
 
 /**
@@ -24,7 +25,7 @@ export async function loginUrlWithNext(fallback = "/dashboard"): Promise<string>
 export async function getServerUser(): Promise<DecodedIdToken | null> {
   // Next.js 15 made cookies() async (it used to return the store directly).
   const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get("session")?.value;
+  const sessionCookie = cookieStore.get(SESSION_COOKIE)?.value;
   if (!sessionCookie) return null;
 
   try {
