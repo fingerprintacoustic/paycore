@@ -65,6 +65,7 @@ export default function RegisterPage() {
           autoComplete="new-password"
           required
           minLength={10}
+          revealable
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -74,6 +75,7 @@ export default function RegisterPage() {
           name="confirmPassword"
           autoComplete="new-password"
           required
+          revealable
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
         />
