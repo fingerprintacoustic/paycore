@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE } from "@/lib/sessionCookie";
 
 // Middleware runs on the Edge runtime, which can't use firebase-admin (it
 // needs Node APIs). So this only checks whether a session cookie is
@@ -31,7 +32,7 @@ export function middleware(req: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some((p) => req.nextUrl.pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
 
-  if (!req.cookies.has("session")) return loginRedirect(req);
+  if (!req.cookies.has(SESSION_COOKIE)) return loginRedirect(req);
 
   // Cookie is present but only the Node-runtime check can say if it's valid.
   // Forward the path so that check can build its own ?next= if it rejects
