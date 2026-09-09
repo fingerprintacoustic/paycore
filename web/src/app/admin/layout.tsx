@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireAdmin, loginUrlWithNext } from "@/lib/auth/getServerUser";
+import { AuthGate } from "@/components/auth/AuthGate";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -9,7 +10,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-screen bg-slate-100 dark:bg-surface-dark">
       <AdminSidebar />
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-6">
+        <AuthGate>{children}</AuthGate>
+      </main>
     </div>
   );
 }
