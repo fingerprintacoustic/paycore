@@ -77,16 +77,6 @@
           "order": "ASCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "searchTokens",
-          "arrayConfig": "CONTAINS"
-        }
-      ]
     }
   ],
   "fieldOverrides": []
