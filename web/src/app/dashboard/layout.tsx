@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerUser, loginUrlWithNext } from "@/lib/auth/getServerUser";
 import { adminDb } from "@/lib/firebase/admin";
+import { AuthGate } from "@/components/auth/AuthGate";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TopBar } from "@/components/dashboard/TopBar";
 
@@ -24,7 +25,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar />
       <div className="flex min-h-screen flex-1 flex-col">
         <TopBar />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6">
+          <AuthGate>{children}</AuthGate>
+        </main>
       </div>
     </div>
   );
