@@ -46,7 +46,10 @@ function callableRequest(data: Record<string, unknown>, uid: string) {
 }
 
 beforeEach(async () => {
-  const collections = ["wallets", "users", "transactions", "ledgerEntries", "notifications", "auditLogs", "stepUpTokens"];
+  const collections = [
+    "wallets", "users", "transactions", "ledgerEntries", "notifications",
+    "auditLogs", "stepUpTokens", "withdrawalRequests", "settings",
+  ];
   for (const col of collections) {
     const snap = await db.collection(col).get();
     await Promise.all(snap.docs.map((d) => d.ref.delete()));
@@ -170,5 +173,33 @@ describe("transferFunds", () => {
     await expect(
       transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("already used") });
+  });
+
+  // ---- admin-configurable limits (settings/global) ----
+
+  it("blocks all transfers in maintenance mode", async () => {
+    await db.collection("settings").doc("global").set({ maintenanceMode: true });
+    const stepUpToken = await seedStepUpToken("alice");
+    await expect(
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 100, stepUpToken }, "alice"))
+    ).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("enforces the admin per-transfer maximum", async () => {
+    await db.collection("settings").doc("global").set({ maxTransferAmount: 500 });
+    const stepUpToken = await seedStepUpToken("alice");
+    await expect(
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2000, stepUpToken }, "alice"))
+    ).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  it("enforces the daily transfer limit across the last 24h", async () => {
+    await db.collection("settings").doc("global").set({ dailyTransferLimit: 3000 });
+    const t1 = await seedStepUpToken("alice");
+    await transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2000, stepUpToken: t1 }, "alice"));
+    const t2 = await seedStepUpToken("alice");
+    await expect(
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2000, stepUpToken: t2 }, "alice"))
+    ).rejects.toMatchObject({ code: "resource-exhausted" });
   });
 });

@@ -124,9 +124,16 @@ export const reactivateAccount = functions.onCall<{ targetUid: string }>(
     const adminUid = await requireAdmin(request.auth?.uid);
     const { targetUid } = request.data;
 
+    // Don't blanket-promote to "active": an account only earns that once a
+    // phone is verified (see markPhoneVerified). If there's no phone on the
+    // auth record, unfreeze it back to pending_verification so it still has
+    // to complete onboarding rather than skipping straight past it.
+    const authUser = await getAuth().getUser(targetUid).catch(() => null);
+    const restoredStatus = authUser?.phoneNumber ? "active" : "pending_verification";
+
     const now = Timestamp.now();
     await Promise.all([
-      db.collection("users").doc(targetUid).update({ status: "active", updatedAt: now }),
+      db.collection("users").doc(targetUid).update({ status: restoredStatus, updatedAt: now }),
       db.collection("wallets").doc(targetUid).update({ status: "active", updatedAt: now }),
     ]);
 
@@ -136,8 +143,9 @@ export const reactivateAccount = functions.onCall<{ targetUid: string }>(
       action: "user.reactivate",
       targetType: "user",
       targetId: targetUid,
+      after: { status: restoredStatus },
     });
 
-    return { status: "ok" };
+    return { status: restoredStatus };
   }
 );

@@ -67,6 +67,11 @@ export const deleteAnnouncement = functions.onCall<{ announcementId: string }>(
   }
 );
 
+const AMOUNT_FIELDS = ["minTransferAmount", "maxTransferAmount", "dailyTransferLimit"] as const;
+const BOOL_FIELDS = ["maintenanceMode", "withdrawalRequiresApproval"] as const;
+const SETTINGS_KEYS: string[] = [...AMOUNT_FIELDS, ...BOOL_FIELDS];
+const ABS_MAX_AMOUNT = 500_000_00;
+
 export const updateSettings = functions.onCall<{
   maintenanceMode?: boolean;
   minTransferAmount?: number;
@@ -75,9 +80,31 @@ export const updateSettings = functions.onCall<{
   withdrawalRequiresApproval?: boolean;
 }>({ enforceAppCheck: true }, async (request) => {
   const adminUid = await requireAdmin(request.auth?.uid);
-  const before = (await db.collection("settings").doc("global").get()).data() ?? null;
 
-  await db.collection("settings").doc("global").set(request.data, { merge: true });
+  const patch: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(request.data)) {
+    if (!SETTINGS_KEYS.includes(key)) {
+      throw new HttpsError("invalid-argument", `Unknown setting: ${key}`);
+    }
+    if ((BOOL_FIELDS as readonly string[]).includes(key)) {
+      if (typeof value !== "boolean") throw new HttpsError("invalid-argument", `${key} must be a boolean.`);
+    } else {
+      if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > ABS_MAX_AMOUNT) {
+        throw new HttpsError("invalid-argument", `${key} must be a whole number of cents between 1 and ${ABS_MAX_AMOUNT}.`);
+      }
+    }
+    patch[key] = value;
+  }
+
+  const before = (await db.collection("settings").doc("global").get()).data() ?? {};
+  const merged = { ...before, ...patch };
+  const min = merged.minTransferAmount ?? 100;
+  const max = merged.maxTransferAmount ?? ABS_MAX_AMOUNT;
+  const daily = merged.dailyTransferLimit ?? ABS_MAX_AMOUNT;
+  if (min > max) throw new HttpsError("invalid-argument", "minTransferAmount can't exceed maxTransferAmount.");
+  if (daily < max) throw new HttpsError("invalid-argument", "dailyTransferLimit can't be below maxTransferAmount.");
+
+  await db.collection("settings").doc("global").set(patch, { merge: true });
 
   await writeAuditLog({
     actorUid: adminUid,
@@ -86,7 +113,7 @@ export const updateSettings = functions.onCall<{
     targetType: "settings",
     targetId: "global",
     before,
-    after: request.data,
+    after: patch,
   });
 
   return { status: "ok" };
