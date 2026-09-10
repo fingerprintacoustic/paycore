@@ -171,14 +171,20 @@ export const reviewWithdrawal = functions.onCall<{
     const req = reqSnap.data()!;
     if (req.status !== "pending") throw new HttpsError("failed-precondition", "Already reviewed.");
 
+    // All reads must come before any write in a Firestore transaction —
+    // read the wallet up front, whether or not we end up refunding.
+    const walletRef = db.collection("wallets").doc(req.uid);
+    const walletSnap = decision === "rejected" ? await tx.get(walletRef) : null;
+    if (decision === "rejected" && !walletSnap!.exists) {
+      throw new HttpsError("not-found", "Wallet not found.");
+    }
+
     const now = Timestamp.now();
     tx.update(requestRef, { status: decision, reviewedBy: adminUid, reviewedAt: now });
 
     if (decision === "rejected") {
       // Return the held funds to the wallet.
-      const walletRef = db.collection("wallets").doc(req.uid);
-      const walletSnap = await tx.get(walletRef);
-      const wallet = walletSnap.data()!;
+      const wallet = walletSnap!.data()!;
       const restoredBalance = wallet.balance + req.amount;
       tx.update(walletRef, { balance: restoredBalance, version: FieldValue.increment(1), updatedAt: now });
     }
