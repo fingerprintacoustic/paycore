@@ -11,6 +11,24 @@ import { Input } from "@/components/ui/Input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { Button } from "@/components/ui/Button";
 
+function describeError(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  const msg = err instanceof Error ? err.message : "";
+  const hay = `${code} ${msg}`.toLowerCase();
+  if (hay.includes("code-expired")) return "That code has expired — request a new one.";
+  if (hay.includes("invalid-verification-code")) return "That code didn't match. Please try again.";
+  if (hay.includes("provider-already-linked") || hay.includes("one identity for the given provider")) {
+    return "This account already has a phone number linked — use “Finish setup” below to sync it.";
+  }
+  if (hay.includes("credential-already-in-use") || hay.includes("account-exists-with-different-credential")) {
+    return "That number is already linked to a different account.";
+  }
+  if (hay.includes("app-check") || hay.includes("unauthenticated") || hay.includes("failed-precondition")) {
+    return "Couldn't reach the server to finish verification. Refresh and try again.";
+  }
+  return `Verification failed${code ? ` (${code})` : ""}. Please try again.`;
+}
+
 export default function VerifyPhonePage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -61,11 +79,24 @@ export default function VerifyPhonePage() {
       await markPhoneVerifiedFn({});
       router.push("/dashboard");
     } catch (err) {
-      setError(
-        err instanceof Error && /already been linked|provider-already-linked|credential-already/i.test(err.message)
-          ? "This phone number is already linked to another account."
-          : "That code didn't match. Please try again."
-      );
+      setError(describeError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // When a phone is already on the Auth record, linkWithCredential can't run
+  // again — but markPhoneVerified reads the Auth record directly, so it can
+  // still sync Firestore (status + searchTokens). This recovers accounts
+  // whose onboarding markPhoneVerified call was blocked (e.g. by App Check).
+  async function handleFinishSetup() {
+    setError(null);
+    setLoading(true);
+    try {
+      await markPhoneVerifiedFn({});
+      router.push("/dashboard");
+    } catch (err) {
+      setError(describeError(err));
     } finally {
       setLoading(false);
     }
@@ -81,12 +112,31 @@ export default function VerifyPhonePage() {
     );
   }
 
+  const linkedPhone = user.phoneNumber;
+
   return (
     <AuthCard
       title="Verify your phone"
-      subtitle={confirmation ? `Enter the code sent to ${phone}` : "We'll text you a one-time code."}
+      subtitle={
+        linkedPhone
+          ? `${linkedPhone} is on your account`
+          : confirmation
+            ? `Enter the code sent to ${phone}`
+            : "We'll text you a one-time code."
+      }
     >
-      {!confirmation ? (
+      {linkedPhone ? (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            This number is verified with Firebase. If people still can't find you by phone,
+            finish syncing it to your profile.
+          </p>
+          {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+          <Button type="button" loading={loading} onClick={handleFinishSetup}>
+            Finish setup
+          </Button>
+        </div>
+      ) : !confirmation ? (
         <form onSubmit={handleSendOtp} className="space-y-4" noValidate>
           <PhoneInput onChange={setPhone} required />
           {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
