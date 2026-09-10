@@ -26,7 +26,7 @@ export const verifyPinFn = httpsCallable<
   { status: string; stepUpToken: string; expiresInSeconds: number }
 >(functions, "verifyPin");
 
-export const setPinFn = httpsCallable<{ pin: string }, { status: string }>(functions, "setPin");
+export const setPinFn = httpsCallable<{ pin: string; currentPin?: string }, { status: string }>(functions, "setPin");
 
 export const markPhoneVerifiedFn = httpsCallable<Record<string, never>, { status: string }>(
   functions,

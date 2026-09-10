@@ -9,8 +9,12 @@ const db = getFirestore();
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { setPin, verifyPin } = require("../pin");
 
-function callableRequest(data: Record<string, unknown>, uid: string) {
-  return { data, auth: { uid, token: {} } } as never;
+function callableRequest(
+  data: Record<string, unknown>,
+  uid: string,
+  token: Record<string, unknown> = {}
+) {
+  return { data, auth: { uid, token } } as never;
 }
 
 beforeEach(async () => {
@@ -34,6 +38,48 @@ describe("setPin", () => {
     const user = (await db.collection("users").doc("alice").get()).data()!;
     expect(user.pinHash).toBeDefined();
     expect(user.pinHash).not.toBe("739284");
+  });
+
+  describe("changing an existing PIN", () => {
+    beforeEach(async () => {
+      await setPin.run(callableRequest({ pin: "739284" }, "alice"));
+    });
+
+    it("is rejected without the current PIN or a recent re-auth", async () => {
+      await expect(
+        setPin.run(callableRequest({ pin: "482910" }, "alice"))
+      ).rejects.toMatchObject({ code: "permission-denied" });
+    });
+
+    it("is rejected with a wrong current PIN", async () => {
+      await expect(
+        setPin.run(callableRequest({ pin: "482910", currentPin: "000000" }, "alice"))
+      ).rejects.toMatchObject({ code: "permission-denied" });
+    });
+
+    it("succeeds with the correct current PIN", async () => {
+      const res = await setPin.run(
+        callableRequest({ pin: "482910", currentPin: "739284" }, "alice")
+      );
+      expect(res.status).toBe("ok");
+    });
+
+    it("succeeds with a recent re-auth (fresh auth_time) and no current PIN", async () => {
+      const res = await setPin.run(
+        callableRequest({ pin: "482910" }, "alice", { auth_time: Math.floor(Date.now() / 1000) })
+      );
+      expect(res.status).toBe("ok");
+    });
+
+    it("is rejected with a stale auth_time", async () => {
+      await expect(
+        setPin.run(
+          callableRequest({ pin: "482910" }, "alice", {
+            auth_time: Math.floor(Date.now() / 1000) - 3600,
+          })
+        )
+      ).rejects.toMatchObject({ code: "permission-denied" });
+    });
   });
 });
 
