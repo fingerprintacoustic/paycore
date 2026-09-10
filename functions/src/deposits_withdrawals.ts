@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { getSettings, assertNotInMaintenance, outboundLast24h } from "./lib/limits";
 
 const db = getFirestore();
 
@@ -95,7 +96,33 @@ export const adminCreditWallet = functions.onCall<{
   return { status: "ok" };
 });
 
-/** User requests a withdrawal — funds are held (debited immediately into a pending state) until admin approval. */
+const MAX_PAYOUT_DETAIL_KEYS = 12;
+const MAX_PAYOUT_DETAIL_LEN = 200;
+
+function validatePayoutDetails(details: unknown): Record<string, string> {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) {
+    throw new HttpsError("invalid-argument", "Invalid payout details.");
+  }
+  const entries = Object.entries(details as Record<string, unknown>);
+  if (entries.length === 0 || entries.length > MAX_PAYOUT_DETAIL_KEYS) {
+    throw new HttpsError("invalid-argument", "Invalid payout details.");
+  }
+  const clean: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    if (typeof v !== "string" || v.length > MAX_PAYOUT_DETAIL_LEN || k.length > 64) {
+      throw new HttpsError("invalid-argument", "Invalid payout details.");
+    }
+    clean[k] = v;
+  }
+  return clean;
+}
+
+/**
+ * User requests a withdrawal. Funds are held (debited immediately) so they
+ * can't be double-spent. If settings.withdrawalRequiresApproval is true the
+ * request waits for an admin; otherwise it's marked approved on the spot.
+ * Either way the actual payout is out of band — this only tracks intent.
+ */
 export const requestWithdrawal = functions.onCall<{
   amount: number;
   payoutDetails: Record<string, string>;
@@ -103,13 +130,28 @@ export const requestWithdrawal = functions.onCall<{
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-  const { amount, payoutDetails } = request.data;
+  const { amount } = request.data;
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new HttpsError("invalid-argument", "Invalid amount.");
   }
+  const payoutDetails = validatePayoutDetails(request.data.payoutDetails);
 
+  const settings = await getSettings();
+  assertNotInMaintenance(settings);
+  if (amount < settings.minTransferAmount) {
+    throw new HttpsError("invalid-argument", `Minimum withdrawal is ${(settings.minTransferAmount / 100).toFixed(2)}.`);
+  }
+  if (amount > settings.maxTransferAmount) {
+    throw new HttpsError("invalid-argument", `Maximum withdrawal is ${(settings.maxTransferAmount / 100).toFixed(2)}.`);
+  }
+  if ((await outboundLast24h(uid)) + amount > settings.dailyTransferLimit) {
+    throw new HttpsError("resource-exhausted", "This would exceed your daily limit. Try again later or with a smaller amount.");
+  }
+
+  const autoApprove = !settings.withdrawalRequiresApproval;
   const walletRef = db.collection("wallets").doc(uid);
   const requestRef = db.collection("withdrawalRequests").doc();
+  const txRef = db.collection("transactions").doc();
 
   await db.runTransaction(async (tx) => {
     const walletSnap = await tx.get(walletRef);
@@ -122,20 +164,46 @@ export const requestWithdrawal = functions.onCall<{
     const now = Timestamp.now();
     const newBalance = wallet.balance - amount;
 
-    // Hold the funds immediately so the user can't spend money that's
-    // already earmarked for withdrawal, but keep status "pending" until an
-    // admin approves the actual payout.
     tx.update(walletRef, { balance: newBalance, version: FieldValue.increment(1), updatedAt: now });
 
     tx.set(requestRef, {
       id: requestRef.id,
       uid,
       amount,
-      status: "pending",
+      status: autoApprove ? "approved" : "pending",
+      transactionId: txRef.id,
       requestedAt: now,
-      reviewedBy: null,
-      reviewedAt: null,
+      reviewedBy: autoApprove ? "system" : null,
+      reviewedAt: autoApprove ? now : null,
       payoutDetails,
+    });
+
+    // Mirror it into transactions so it shows in the user's history.
+    tx.set(txRef, {
+      id: txRef.id,
+      type: "withdrawal",
+      status: autoApprove ? "completed" : "pending",
+      fromUid: uid,
+      toUid: null,
+      amount,
+      currency: wallet.currency,
+      note: null,
+      referenceNumber: `PC-WD-${txRef.id.slice(0, 8).toUpperCase()}`,
+      createdAt: now,
+      completedAt: autoApprove ? now : null,
+      failureReason: null,
+      initiatedBy: uid,
+    });
+
+    const ledgerRef = db.collection("ledgerEntries").doc();
+    tx.set(ledgerRef, {
+      id: ledgerRef.id,
+      transactionId: txRef.id,
+      uid,
+      direction: "debit",
+      amount,
+      balanceAfter: newBalance,
+      createdAt: now,
     });
 
     const auditRef = db.collection("auditLogs").doc();
@@ -147,13 +215,13 @@ export const requestWithdrawal = functions.onCall<{
       targetType: "wallet",
       targetId: uid,
       before: { balance: wallet.balance },
-      after: { balance: newBalance, pendingWithdrawal: requestRef.id },
+      after: { balance: newBalance, withdrawalRequest: requestRef.id, autoApproved: autoApprove },
       ip: null,
       createdAt: now,
     });
   });
 
-  return { requestId: requestRef.id, status: "pending" };
+  return { requestId: requestRef.id, status: autoApprove ? "approved" : "pending" };
 });
 
 export const reviewWithdrawal = functions.onCall<{
@@ -182,11 +250,32 @@ export const reviewWithdrawal = functions.onCall<{
     const now = Timestamp.now();
     tx.update(requestRef, { status: decision, reviewedBy: adminUid, reviewedAt: now });
 
+    // Keep the mirrored transaction record in sync.
+    if (req.transactionId) {
+      const txDocRef = db.collection("transactions").doc(req.transactionId);
+      tx.update(txDocRef, {
+        status: decision === "approved" ? "completed" : "reversed",
+        completedAt: decision === "approved" ? now : null,
+        failureReason: decision === "rejected" ? "rejected_by_admin" : null,
+      });
+    }
+
     if (decision === "rejected") {
       // Return the held funds to the wallet.
       const wallet = walletSnap!.data()!;
       const restoredBalance = wallet.balance + req.amount;
       tx.update(walletRef, { balance: restoredBalance, version: FieldValue.increment(1), updatedAt: now });
+
+      const reversalRef = db.collection("ledgerEntries").doc();
+      tx.set(reversalRef, {
+        id: reversalRef.id,
+        transactionId: req.transactionId ?? requestId,
+        uid: req.uid,
+        direction: "credit",
+        amount: req.amount,
+        balanceAfter: restoredBalance,
+        createdAt: now,
+      });
     }
 
     const notifRef = db.collection("notifications").doc();

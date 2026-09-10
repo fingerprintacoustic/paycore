@@ -2,10 +2,13 @@ import * as functions from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import type { TransferFundsRequest, TransferFundsResponse } from "./types";
+import { getSettings, assertNotInMaintenance, outboundLast24h } from "./lib/limits";
 
 const db = getFirestore();
-const MIN_TRANSFER = 100;
-const MAX_TRANSFER = 500_000_00;
+// Absolute guards, independent of admin settings — a misconfigured
+// settings/global can loosen the admin-facing limits but never these.
+const ABS_MIN_TRANSFER = 1;
+const ABS_MAX_TRANSFER = 500_000_00;
 const REQUEST_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function generateReferenceNumber(): string {
@@ -28,7 +31,7 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
       throw new HttpsError("invalid-argument", "Invalid recipient.");
     }
     if (toUid === uid) throw new HttpsError("invalid-argument", "Cannot transfer to yourself.");
-    if (!Number.isSafeInteger(amount) || amount < MIN_TRANSFER || amount > MAX_TRANSFER) {
+    if (!Number.isSafeInteger(amount) || amount < ABS_MIN_TRANSFER || amount > ABS_MAX_TRANSFER) {
       throw new HttpsError("invalid-argument", "Invalid amount.");
     }
     if (note !== undefined && (typeof note !== "string" || note.length > 280)) {
@@ -36,6 +39,22 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
     }
     if (!stepUpToken || typeof stepUpToken !== "string" || stepUpToken.length > 128) {
       throw new HttpsError("failed-precondition", "PIN verification required.");
+    }
+
+    // Admin-configurable limits (settings/global). The per-transfer bounds
+    // are hard; the daily limit is checked pre-transaction, so a burst of
+    // exactly-simultaneous transfers could marginally overshoot it — it's a
+    // safety rail, not the balance guarantee (that check is transactional).
+    const settings = await getSettings();
+    assertNotInMaintenance(settings);
+    if (amount < settings.minTransferAmount) {
+      throw new HttpsError("invalid-argument", `Minimum transfer is ${(settings.minTransferAmount / 100).toFixed(2)}.`);
+    }
+    if (amount > settings.maxTransferAmount) {
+      throw new HttpsError("invalid-argument", `Maximum transfer is ${(settings.maxTransferAmount / 100).toFixed(2)}.`);
+    }
+    if ((await outboundLast24h(uid)) + amount > settings.dailyTransferLimit) {
+      throw new HttpsError("resource-exhausted", "This transfer would exceed your daily limit. Try again later or with a smaller amount.");
     }
 
     const fromWalletRef = db.collection("wallets").doc(uid);
