@@ -46,9 +46,16 @@ export const lookupRecipient = functions.onCall<{ query: string }>(
       );
     }
 
+    // searchTokens stores phone numbers as digit-only suffixes, so a query
+    // typed with the usual "+", spaces or dashes ("+1 555-123-4567") would
+    // never match. If the query is phone-shaped, strip it to digits;
+    // otherwise (an email) leave it alone.
+    const phoneDigits = raw.replace(/[\s+().-]/g, "");
+    const needle = /^\d{3,}$/.test(phoneDigits) ? phoneDigits : raw;
+
     const snap = await db
       .collection("users")
-      .where("searchTokens", "array-contains", raw)
+      .where("searchTokens", "array-contains", needle)
       .limit(MAX_RESULTS + 1)
       .get();
 
