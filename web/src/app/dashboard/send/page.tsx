@@ -31,7 +31,11 @@ export default function SendMoneyPage() {
       if (q.length < 3) throw new Error("Enter at least 3 characters to search.");
       const { data } = await lookupRecipientFn({ query: q });
       setResults(data.results);
-      if (data.results.length === 0) setError("No account found with that email or phone.");
+      if (data.results.length === 0) {
+        setError(
+          "No PayCore account matches that. Check the spelling, or ask them to finish signing up (including phone verification)."
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed. Please try again.");
     } finally {
@@ -120,10 +124,14 @@ export default function SendMoneyPage() {
             <Input
               label="Recipient email or phone"
               name="query"
+              placeholder="name@email.com or +1 555 123 4567"
               required
               value={query_}
               onChange={(e) => setQuery(e.target.value)}
             />
+            <p className="-mt-1 text-xs text-slate-400">
+              The recipient needs a PayCore account. Phone or email works, formatted any way.
+            </p>
             {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
             <Button type="submit" loading={loading}>
               Find recipient
