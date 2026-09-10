@@ -3,6 +3,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import * as bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
+import { securityDocRef, readSecurityDoc } from "./lib/securityDoc";
 
 const db = getFirestore();
 const PIN_REGEX = /^\d{4,6}$/;
@@ -12,6 +13,35 @@ const STEP_UP_TTL_MS = 5 * 60 * 1000;
 // Changing an existing PIN counts as a recent re-auth if the account
 // signed in (or re-authenticated) within this window.
 const REAUTH_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * PIN state, read from private/security with a fallback to the user doc
+ * for accounts that scripts/migrateSecurityFields.ts hasn't moved yet.
+ * The next setPin/verifyPin write always lands in private/security.
+ */
+async function readPinState(
+  uid: string,
+  userData?: FirebaseFirestore.DocumentData
+): Promise<{
+  pinHash: string | null;
+  pinFailedAttempts: number;
+  pinLockedUntil: FirebaseFirestore.Timestamp | null;
+}> {
+  const security = await readSecurityDoc(uid);
+  if (security.pinHash != null) {
+    return {
+      pinHash: security.pinHash,
+      pinFailedAttempts: security.pinFailedAttempts ?? 0,
+      pinLockedUntil: security.pinLockedUntil ?? null,
+    };
+  }
+  const legacy = userData ?? (await db.collection("users").doc(uid).get()).data() ?? {};
+  return {
+    pinHash: legacy.pinHash ?? null,
+    pinFailedAttempts: legacy.pinFailedAttempts ?? security.pinFailedAttempts ?? 0,
+    pinLockedUntil: legacy.pinLockedUntil ?? security.pinLockedUntil ?? null,
+  };
+}
 
 async function writeAuditLog(actorUid: string, action: string, targetId: string) {
   const ref = db.collection("auditLogs").doc();
@@ -43,8 +73,7 @@ export const setPin = functions.onCall<{ pin: string; currentPin?: string }>(
       throw new HttpsError("invalid-argument", "Choose a less predictable PIN.");
     }
 
-    const userRef = db.collection("users").doc(uid);
-    const existingHash: string | undefined = (await userRef.get()).data()?.pinHash ?? undefined;
+    const existingHash = (await readPinState(uid)).pinHash ?? undefined;
 
     // The PIN's job is to stay a barrier even if someone gets the session.
     // So *changing* an existing PIN can't rely on the session alone — it
@@ -67,13 +96,11 @@ export const setPin = functions.onCall<{ pin: string; currentPin?: string }>(
 
     const pinHash = await bcrypt.hash(pin, 12);
     const now = Timestamp.now();
-    await userRef.update({
-      pinHash,
-      pinSetAt: now,
-      pinFailedAttempts: 0,
-      pinLockedUntil: null,
-      updatedAt: now,
-    });
+    await securityDocRef(uid).set(
+      { pinHash, pinFailedAttempts: 0, pinLockedUntil: null },
+      { merge: true }
+    );
+    await db.collection("users").doc(uid).update({ pinSetAt: now, updatedAt: now });
     await writeAuditLog(uid, existingHash ? "user.pin_changed" : "user.pin_set", uid);
     return { status: "ok" };
   }
@@ -86,8 +113,7 @@ export const verifyPin = functions.onCall<{ pin: string }>(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const userRef = db.collection("users").doc(uid);
-    const userSnap = await userRef.get();
+    const userSnap = await db.collection("users").doc(uid).get();
     if (!userSnap.exists) throw new HttpsError("not-found", "Account not found.");
 
     const user = userSnap.data()!;
@@ -95,29 +121,32 @@ export const verifyPin = functions.onCall<{ pin: string }>(
     if (user.status && user.status !== "active") {
       throw new HttpsError("failed-precondition", "Your account is not active.");
     }
-    if (user.pinLockedUntil && user.pinLockedUntil.toMillis() > now) {
-      const minutesLeft = Math.ceil((user.pinLockedUntil.toMillis() - now) / 60000);
+
+    const pinState = await readPinState(uid, user);
+    if (pinState.pinLockedUntil && pinState.pinLockedUntil.toMillis() > now) {
+      const minutesLeft = Math.ceil((pinState.pinLockedUntil.toMillis() - now) / 60000);
       throw new HttpsError("resource-exhausted", `Too many attempts. Try again in ${minutesLeft} min.`);
     }
-    if (!user.pinHash) {
+    if (!pinState.pinHash) {
       throw new HttpsError("failed-precondition", "No PIN set for this account.");
     }
 
+    const secRef = securityDocRef(uid);
     const { pin } = request.data;
-    const isMatch = await bcrypt.compare(pin ?? "", user.pinHash);
+    const isMatch = await bcrypt.compare(pin ?? "", pinState.pinHash);
     if (!isMatch) {
-      const attempts = (user.pinFailedAttempts ?? 0) + 1;
+      const attempts = pinState.pinFailedAttempts + 1;
       const update: Record<string, unknown> = { pinFailedAttempts: attempts };
       if (attempts >= MAX_PIN_ATTEMPTS) {
         update.pinLockedUntil = Timestamp.fromMillis(now + LOCKOUT_MS);
         update.pinFailedAttempts = 0;
         await writeAuditLog(uid, "user.pin_locked", uid);
       }
-      await userRef.update(update);
+      await secRef.set(update, { merge: true });
       throw new HttpsError("permission-denied", "Incorrect PIN.");
     }
 
-    await userRef.update({ pinFailedAttempts: 0, pinLockedUntil: null });
+    await secRef.set({ pinFailedAttempts: 0, pinLockedUntil: null }, { merge: true });
     const token = randomUUID();
     const tokenRef = db.collection("stepUpTokens").doc(token);
     await tokenRef.set({

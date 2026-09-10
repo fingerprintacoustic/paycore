@@ -1,6 +1,7 @@
 import * as functionsV1 from "firebase-functions/v1";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { securityDocRef } from "./lib/securityDoc";
 
 const db = getFirestore();
 
@@ -28,16 +29,23 @@ export const onUserCreated = functionsV1.auth.user().onCreate(async (user) => {
     address: null,
     role: "user",
     status: "pending_verification",
-    pinHash: null,
-    pinSetAt: null,
-    twoFactorEnabled: false,
-    twoFactorSecret: null, // set only server-side during enrollment, never read by client rules
+    pinSetAt: null, // non-secret "has a PIN" indicator; the hash itself lives in private/security
+    twoFactorEnabled: false, // non-secret state flag; the TOTP secret lives in private/security
     emailVerified: user.emailVerified,
     notificationPrefs: { email: true, push: true, sms: false },
     searchTokens,
     createdAt: now,
     updatedAt: now,
     lastLoginAt: now,
+  });
+
+  // Secrets go in a subcollection no client can read (see lib/securityDoc.ts).
+  await securityDocRef(user.uid).set({
+    pinHash: null,
+    pinFailedAttempts: 0,
+    pinLockedUntil: null,
+    twoFactorSecret: null,
+    pending2FASecret: null,
   });
 
   await db.collection("wallets").doc(user.uid).set({

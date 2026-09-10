@@ -97,6 +97,25 @@ describe("users", () => {
     const alice = testEnv.authenticatedContext("alice").firestore();
     await assertSucceeds(updateDoc(doc(alice, "users/alice"), { displayName: "Alice K." }));
   });
+
+  it("denies a user writing non-whitelisted fields (phone, searchTokens, pinSetAt)", async () => {
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    await assertFails(updateDoc(doc(alice, "users/alice"), { phone: "+15550000000" }));
+    await assertFails(updateDoc(doc(alice, "users/alice"), { searchTokens: ["hacked"] }));
+    await assertFails(updateDoc(doc(alice, "users/alice"), { pinSetAt: new Date() }));
+  });
+
+  it("denies any client access to the private/security subcollection", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc("users/alice/private/security")
+        .set({ pinHash: "$2a$12$abc", twoFactorSecret: "SECRET" });
+    });
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    await assertFails(getDoc(doc(alice, "users/alice/private/security")));
+    await assertFails(setDoc(doc(alice, "users/alice/private/security"), { pinHash: "x" }));
+  });
 });
 
 describe("notifications", () => {

@@ -17,9 +17,13 @@ function callableRequest(
   return { data, auth: { uid, token } } as never;
 }
 
+const securityRef = db.collection("users").doc("alice").collection("private").doc("security");
+
 beforeEach(async () => {
   const snap = await db.collection("users").get();
   await Promise.all(snap.docs.map((d) => d.ref.delete()));
+  // Deleting a doc doesn't delete its subcollections — clear the secrets doc too.
+  await securityRef.delete();
   await db.collection("users").doc("alice").set({ uid: "alice", role: "user", status: "active" });
 });
 
@@ -33,11 +37,16 @@ describe("setPin", () => {
     await expect(setPin.run(callableRequest({ pin: "abcdef" }, "alice"))).rejects.toBeInstanceOf(HttpsError);
   });
 
-  it("stores a hash, never the plaintext PIN", async () => {
+  it("stores a hash in the private subcollection, never on the user doc or in plaintext", async () => {
     await setPin.run(callableRequest({ pin: "739284" }, "alice"));
+
     const user = (await db.collection("users").doc("alice").get()).data()!;
-    expect(user.pinHash).toBeDefined();
-    expect(user.pinHash).not.toBe("739284");
+    expect(user.pinHash).toBeUndefined();
+    expect(user.pinSetAt).toBeDefined();
+
+    const security = (await securityRef.get()).data()!;
+    expect(security.pinHash).toBeDefined();
+    expect(security.pinHash).not.toBe("739284");
   });
 
   describe("changing an existing PIN", () => {
