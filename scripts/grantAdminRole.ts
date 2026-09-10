@@ -8,7 +8,7 @@
  *
  * Usage:
  *   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
- *     npx ts-node scripts/grantAdminRole.ts <uid> admin
+ *     npx tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support>
  */
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -17,14 +17,19 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 initializeApp();
 
 async function main() {
-  const [, , uid, role] = process.argv;
-  if (!uid || (role !== "admin" && role !== "support")) {
-    console.error("Usage: ts-node grantAdminRole.ts <uid> <admin|support>");
+  const [, , identifier, role] = process.argv;
+  if (!identifier || (role !== "admin" && role !== "support")) {
+    console.error("Usage: tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support>");
     process.exit(1);
   }
 
   const auth = getAuth();
   const db = getFirestore();
+
+  // Accept an email or a raw UID.
+  const uid = identifier.includes("@")
+    ? (await auth.getUserByEmail(identifier)).uid
+    : identifier;
 
   // Keep both representations of role in sync: the custom claim (which
   // Firestore security rules read) and the Firestore field (which the
