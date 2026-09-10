@@ -40,30 +40,29 @@ export function assertNotInMaintenance(settings: GlobalSettings): void {
  * plus withdrawals still in flight or paid out (rejected withdrawals were
  * refunded, so they don't count). Used to enforce dailyTransferLimit
  * across both paths, which is the meaningful risk boundary.
+ *
+ * Queries by a single equality field only (auto-indexed) and filters the
+ * time window in memory — so it needs no composite index and can't break
+ * money movement while one builds.
  */
 export async function outboundLast24h(uid: string): Promise<number> {
-  const since = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+  const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
   const [transfers, withdrawals] = await Promise.all([
-    db
-      .collection("transactions")
-      .where("fromUid", "==", uid)
-      .where("createdAt", ">=", since)
-      .get(),
-    db
-      .collection("withdrawalRequests")
-      .where("uid", "==", uid)
-      .where("requestedAt", ">=", since)
-      .get(),
+    db.collection("transactions").where("fromUid", "==", uid).get(),
+    db.collection("withdrawalRequests").where("uid", "==", uid).get(),
   ]);
+
+  const inWindow = (ts: unknown): boolean =>
+    ts instanceof Timestamp ? ts.toMillis() >= sinceMs : false;
 
   let total = 0;
   transfers.forEach((d) => {
     const t = d.data();
-    if (t.type === "transfer") total += t.amount ?? 0;
+    if (t.type === "transfer" && inWindow(t.createdAt)) total += t.amount ?? 0;
   });
   withdrawals.forEach((d) => {
     const w = d.data();
-    if (w.status !== "rejected") total += w.amount ?? 0;
+    if (w.status !== "rejected" && inWindow(w.requestedAt)) total += w.amount ?? 0;
   });
   return total;
 }
