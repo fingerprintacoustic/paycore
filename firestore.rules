@@ -31,16 +31,22 @@ service cloud.firestore {
     // ---------- users ----------
     match /users/{uid} {
       allow read: if isSelf(uid) || isSupport();
-      // Users may update only their own non-sensitive profile fields.
-      // pinHash, role, status, twoFactorEnabled are excluded — those are
-      // Cloud-Function-only writes.
+      // Whitelist, not blacklist: a user may only touch these profile
+      // fields. Everything else — role, status, email, phone, searchTokens,
+      // pinSetAt, twoFactorEnabled, timestamps — is Cloud-Function-only.
       allow update: if isSelf(uid) &&
-        !('role' in request.resource.data.diff(resource.data).affectedKeys()) &&
-        !('status' in request.resource.data.diff(resource.data).affectedKeys()) &&
-        !('pinHash' in request.resource.data.diff(resource.data).affectedKeys()) &&
-        !('twoFactorEnabled' in request.resource.data.diff(resource.data).affectedKeys());
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'photoURL', 'address', 'notificationPrefs', 'fcmTokens', 'updatedAt']);
       allow create: if false; // user docs are created by a Cloud Function auth trigger
       allow delete: if false;
+
+      // Secrets: pinHash, PIN lockout counters, TOTP secret(s). Firestore
+      // rules can't hide fields and don't cascade into subcollections, so
+      // these live here where every client read/write is denied — only the
+      // Admin SDK (which bypasses rules) touches them.
+      match /private/{doc} {
+        allow read, write: if false;
+      }
     }
 
     // ---------- wallets ----------

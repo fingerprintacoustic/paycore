@@ -2,6 +2,7 @@ import * as functions from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { authenticator } from "otplib";
+import { securityDocRef, readSecurityDoc } from "./lib/securityDoc";
 
 const db = getFirestore();
 
@@ -15,6 +16,8 @@ authenticator.options = { window: 1 };
  * the client can render it as a QR code (e.g. with the `qrcode` package).
  * The secret is stored but NOT yet marked enabled — that only happens
  * after the user proves they can generate a valid code with it.
+ *
+ * Secrets live in users/{uid}/private/security, which no client can read.
  */
 export const start2FAEnrollment = functions.onCall(
   { enforceAppCheck: true },
@@ -28,10 +31,8 @@ export const start2FAEnrollment = functions.onCall(
 
     // Pending secret, separate from the live one, so an abandoned
     // enrollment never silently activates.
-    await db.collection("users").doc(uid).update({
-      pending2FASecret: secret,
-      updatedAt: Timestamp.now(),
-    });
+    await securityDocRef(uid).set({ pending2FASecret: secret }, { merge: true });
+    await db.collection("users").doc(uid).update({ updatedAt: Timestamp.now() });
 
     return { otpauthUrl };
   }
@@ -44,9 +45,7 @@ export const confirm2FAEnrollment = functions.onCall<{ code: string }>(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const userRef = db.collection("users").doc(uid);
-    const userSnap = await userRef.get();
-    const pendingSecret = userSnap.data()?.pending2FASecret;
+    const pendingSecret = (await readSecurityDoc(uid)).pending2FASecret;
     if (!pendingSecret) {
       throw new HttpsError("failed-precondition", "No enrollment in progress.");
     }
@@ -56,10 +55,12 @@ export const confirm2FAEnrollment = functions.onCall<{ code: string }>(
       throw new HttpsError("permission-denied", "Invalid code. Please try again.");
     }
 
-    await userRef.update({
-      twoFactorSecret: pendingSecret,
+    await securityDocRef(uid).set(
+      { twoFactorSecret: pendingSecret, pending2FASecret: null },
+      { merge: true }
+    );
+    await db.collection("users").doc(uid).update({
       twoFactorEnabled: true,
-      pending2FASecret: null,
       updatedAt: Timestamp.now(),
     });
 
@@ -88,8 +89,7 @@ export const verify2FACode = functions.onCall<{ code: string }>(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const userSnap = await db.collection("users").doc(uid).get();
-    const secret = userSnap.data()?.twoFactorSecret;
+    const secret = (await readSecurityDoc(uid)).twoFactorSecret;
     if (!secret) throw new HttpsError("failed-precondition", "2FA is not enabled.");
 
     const isValid = authenticator.check(request.data.code ?? "", secret);
@@ -105,17 +105,15 @@ export const disable2FA = functions.onCall<{ code: string }>(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const userRef = db.collection("users").doc(uid);
-    const userSnap = await userRef.get();
-    const secret = userSnap.data()?.twoFactorSecret;
+    const secret = (await readSecurityDoc(uid)).twoFactorSecret;
     if (!secret) throw new HttpsError("failed-precondition", "2FA is not enabled.");
 
     const isValid = authenticator.check(request.data.code ?? "", secret);
     if (!isValid) throw new HttpsError("permission-denied", "Invalid code.");
 
-    await userRef.update({
+    await securityDocRef(uid).set({ twoFactorSecret: null }, { merge: true });
+    await db.collection("users").doc(uid).update({
       twoFactorEnabled: false,
-      twoFactorSecret: null,
       updatedAt: Timestamp.now(),
     });
     return { status: "ok" };
