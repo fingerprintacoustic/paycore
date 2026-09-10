@@ -9,6 +9,9 @@ const PIN_REGEX = /^\d{4,6}$/;
 const MAX_PIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 const STEP_UP_TTL_MS = 5 * 60 * 1000;
+// Changing an existing PIN counts as a recent re-auth if the account
+// signed in (or re-authenticated) within this window.
+const REAUTH_WINDOW_MS = 5 * 60 * 1000;
 
 async function writeAuditLog(actorUid: string, action: string, targetId: string) {
   const ref = db.collection("auditLogs").doc();
@@ -26,13 +29,13 @@ async function writeAuditLog(actorUid: string, action: string, targetId: string)
   });
 }
 
-export const setPin = functions.onCall<{ pin: string }>(
+export const setPin = functions.onCall<{ pin: string; currentPin?: string }>(
   { enforceAppCheck: true },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const { pin } = request.data;
+    const { pin, currentPin } = request.data;
     if (!PIN_REGEX.test(pin ?? "")) {
       throw new HttpsError("invalid-argument", "PIN must be 4–6 digits.");
     }
@@ -40,16 +43,38 @@ export const setPin = functions.onCall<{ pin: string }>(
       throw new HttpsError("invalid-argument", "Choose a less predictable PIN.");
     }
 
+    const userRef = db.collection("users").doc(uid);
+    const existingHash: string | undefined = (await userRef.get()).data()?.pinHash ?? undefined;
+
+    // The PIN's job is to stay a barrier even if someone gets the session.
+    // So *changing* an existing PIN can't rely on the session alone — it
+    // needs the current PIN, or a recent re-authentication (auth_time is
+    // refreshed when the client re-enters the account password). First-time
+    // setup has nothing to protect yet, so it's allowed straight through.
+    if (existingHash) {
+      const authTimeSec =
+        typeof request.auth?.token?.auth_time === "number" ? request.auth.token.auth_time : 0;
+      const reauthedRecently = Date.now() - authTimeSec * 1000 < REAUTH_WINDOW_MS;
+      const currentPinOk =
+        typeof currentPin === "string" && (await bcrypt.compare(currentPin, existingHash));
+      if (!reauthedRecently && !currentPinOk) {
+        throw new HttpsError(
+          "permission-denied",
+          "To change your PIN, enter your current PIN or re-enter your password."
+        );
+      }
+    }
+
     const pinHash = await bcrypt.hash(pin, 12);
     const now = Timestamp.now();
-    await db.collection("users").doc(uid).update({
+    await userRef.update({
       pinHash,
       pinSetAt: now,
       pinFailedAttempts: 0,
       pinLockedUntil: null,
       updatedAt: now,
     });
-    await writeAuditLog(uid, "user.pin_set", uid);
+    await writeAuditLog(uid, existingHash ? "user.pin_changed" : "user.pin_set", uid);
     return { status: "ok" };
   }
 );
