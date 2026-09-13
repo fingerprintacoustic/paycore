@@ -49,6 +49,11 @@ export const requestWithdrawalFn = httpsCallable<
   { requestId: string; status: string }
 >(functions, "requestWithdrawal");
 
+export const requestDepositFn = httpsCallable<
+  { amount: number; reference: string },
+  { requestId: string; status: string }
+>(functions, "requestDeposit");
+
 export function newRequestId(): string {
   return crypto.randomUUID();
 }

@@ -6,7 +6,7 @@ initializeApp({ projectId: "demo-paycore" });
 const db = getFirestore();
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { requestWithdrawal, reviewWithdrawal } = require("../deposits_withdrawals");
+const { requestWithdrawal, reviewWithdrawal, requestDeposit, reviewDeposit } = require("../deposits_withdrawals");
 
 function callableRequest(data: Record<string, unknown>, uid: string) {
   return { data, auth: { uid, token: {} } } as never;
@@ -19,7 +19,7 @@ async function setSettings(patch: Record<string, unknown>) {
 
 beforeEach(async () => {
   for (const col of [
-    "wallets", "users", "withdrawalRequests", "transactions", "ledgerEntries", "notifications", "auditLogs", "settings",
+    "wallets", "users", "withdrawalRequests", "depositRequests", "transactions", "ledgerEntries", "notifications", "auditLogs", "settings",
   ]) {
     const snap = await db.collection(col).get();
     await Promise.all(snap.docs.map((d) => d.ref.delete()));
@@ -136,6 +136,110 @@ describe("reviewWithdrawal", () => {
     const requestId = await pending(1000);
     await expect(
       reviewWithdrawal.run(callableRequest({ requestId, decision: "approved" }, "alice"))
+    ).rejects.toMatchObject({ message: expect.stringContaining("Admin access required") });
+  });
+});
+
+describe("requestDeposit", () => {
+  it("creates a pending claim and notifies every admin — moves no money", async () => {
+    const res = await requestDeposit.run(
+      callableRequest({ amount: 5000, reference: "Bank transfer, ref #4821" }, "alice")
+    );
+    expect(res.status).toBe("pending");
+
+    const req = (await db.collection("depositRequests").doc(res.requestId).get()).data()!;
+    expect(req.status).toBe("pending");
+    expect(req.amount).toBe(5000);
+    expect(req.reference).toBe("Bank transfer, ref #4821");
+
+    const wallet = (await db.collection("wallets").doc("alice").get()).data()!;
+    expect(wallet.balance).toBe(10000); // untouched — nothing credited yet
+
+    const adminNotifs = (
+      await db.collection("notifications").where("uid", "==", "admin").get()
+    ).docs;
+    expect(adminNotifs.some((d) => d.data().type === "deposit_requested")).toBe(true);
+  });
+
+  it("rejects an invalid amount", async () => {
+    await expect(
+      requestDeposit.run(callableRequest({ amount: 0, reference: "test" }, "alice"))
+    ).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  it("rejects a missing or too-short reference", async () => {
+    await expect(
+      requestDeposit.run(callableRequest({ amount: 1000, reference: "hi" }, "alice"))
+    ).rejects.toMatchObject({ code: "invalid-argument" });
+  });
+
+  it("blocks requests in maintenance mode", async () => {
+    await setSettings({ maintenanceMode: true });
+    await expect(
+      requestDeposit.run(callableRequest({ amount: 1000, reference: "Bank transfer" }, "alice"))
+    ).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("blocks a frozen wallet", async () => {
+    await db.collection("wallets").doc("alice").update({ status: "frozen" });
+    await expect(
+      requestDeposit.run(callableRequest({ amount: 1000, reference: "Bank transfer" }, "alice"))
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+  });
+});
+
+describe("reviewDeposit", () => {
+  async function pendingDeposit(amount = 5000) {
+    const { requestId } = await requestDeposit.run(
+      callableRequest({ amount, reference: "Bank transfer, ref #4821" }, "alice")
+    );
+    return requestId;
+  }
+
+  it("approving credits the wallet and mirrors a completed transaction", async () => {
+    const requestId = await pendingDeposit();
+    await reviewDeposit.run(callableRequest({ requestId, decision: "approved" }, "admin"));
+
+    const req = (await db.collection("depositRequests").doc(requestId).get()).data()!;
+    expect(req.status).toBe("approved");
+    expect(req.transactionId).toBeDefined();
+
+    const wallet = (await db.collection("wallets").doc("alice").get()).data()!;
+    expect(wallet.balance).toBe(15000);
+
+    const txn = (await db.collection("transactions").doc(req.transactionId).get()).data()!;
+    expect(txn.type).toBe("deposit");
+    expect(txn.status).toBe("completed");
+    expect(txn.amount).toBe(5000);
+  });
+
+  it("rejecting leaves the wallet untouched and creates no transaction", async () => {
+    const requestId = await pendingDeposit();
+    await reviewDeposit.run(callableRequest({ requestId, decision: "rejected" }, "admin"));
+
+    const req = (await db.collection("depositRequests").doc(requestId).get()).data()!;
+    expect(req.status).toBe("rejected");
+    expect(req.transactionId).toBeNull();
+
+    const wallet = (await db.collection("wallets").doc("alice").get()).data()!;
+    expect(wallet.balance).toBe(10000); // nothing was ever credited
+
+    const txns = (await db.collection("transactions").get()).docs;
+    expect(txns.length).toBe(0);
+  });
+
+  it("cannot review the same request twice", async () => {
+    const requestId = await pendingDeposit(1000);
+    await reviewDeposit.run(callableRequest({ requestId, decision: "approved" }, "admin"));
+    await expect(
+      reviewDeposit.run(callableRequest({ requestId, decision: "rejected" }, "admin"))
+    ).rejects.toMatchObject({ message: expect.stringContaining("Already reviewed") });
+  });
+
+  it("rejects a non-admin reviewer", async () => {
+    const requestId = await pendingDeposit(1000);
+    await expect(
+      reviewDeposit.run(callableRequest({ requestId, decision: "approved" }, "alice"))
     ).rejects.toMatchObject({ message: expect.stringContaining("Admin access required") });
   });
 });

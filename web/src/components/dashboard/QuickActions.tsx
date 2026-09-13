@@ -4,7 +4,7 @@ import { Send, QrCode, HandCoins } from "lucide-react";
 const ACTIONS = [
   { href: "/dashboard/send", label: "Send", icon: Send },
   { href: "/dashboard/receive", label: "Receive", icon: QrCode },
-  { href: "/dashboard/request", label: "Request", icon: HandCoins },
+  { href: "/dashboard/request", label: "Add funds", icon: HandCoins },
 ];
 
 export function QuickActions() {

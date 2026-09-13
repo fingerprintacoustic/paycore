@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, Users, Landmark, ArrowLeftRight, Megaphone, Settings, FileDown } from "lucide-react";
+import { Gauge, Users, Landmark, Coins, ArrowLeftRight, Megaphone, Settings, FileDown } from "lucide-react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Overview", icon: Gauge },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/deposits", label: "Deposits", icon: Coins },
   { href: "/admin/withdrawals", label: "Withdrawals", icon: Landmark },
   { href: "/admin/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/admin/announcements", label: "Announcements", icon: Megaphone },

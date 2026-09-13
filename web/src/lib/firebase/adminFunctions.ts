@@ -30,6 +30,11 @@ export const reviewWithdrawalFn = httpsCallable<
   { status: string }
 >(functions, "reviewWithdrawal");
 
+export const reviewDepositFn = httpsCallable<
+  { requestId: string; decision: "approved" | "rejected" },
+  { status: string }
+>(functions, "reviewDeposit");
+
 export const upsertAnnouncementFn = httpsCallable<
   {
     announcementId?: string;
