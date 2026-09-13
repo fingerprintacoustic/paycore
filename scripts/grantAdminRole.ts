@@ -1,14 +1,15 @@
 /**
  * scripts/grantAdminRole.ts
  *
- * There is deliberately no in-app way to promote a user to admin — that
- * would mean the app could create its own admins, defeating the point of
- * having a separate trust tier. Run this manually, once, to bootstrap
- * your first admin account (and again for any future admin/support hire).
+ * There is deliberately no in-app way to promote (or demote) a user's role
+ * — that would mean the app could create its own admins, defeating the
+ * point of having a separate trust tier. Run this manually to bootstrap an
+ * admin/support account, and again with role "user" to revoke it (staff
+ * turnover, a mistake, a compromised account).
  *
  * Usage:
  *   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
- *     npx tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support>
+ *     npx tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support|user>
  */
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -18,8 +19,8 @@ initializeApp();
 
 async function main() {
   const [, , identifier, role] = process.argv;
-  if (!identifier || (role !== "admin" && role !== "support")) {
-    console.error("Usage: tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support>");
+  if (!identifier || (role !== "admin" && role !== "support" && role !== "user")) {
+    console.error("Usage: tsx scripts/grantAdminRole.ts <uid-or-email> <admin|support|user>");
     process.exit(1);
   }
 
@@ -41,7 +42,8 @@ async function main() {
   // effect immediately rather than waiting for natural token refresh.
   await auth.revokeRefreshTokens(uid);
 
-  console.log(`Granted role "${role}" to ${uid}. They'll need to sign in again.`);
+  const verb = role === "user" ? "Revoked elevated access for" : `Granted role "${role}" to`;
+  console.log(`${verb} ${uid}. They'll need to sign in again.`);
 }
 
 main().catch((err) => {
