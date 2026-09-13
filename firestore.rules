@@ -118,6 +118,14 @@ service cloud.firestore {
       allow update, delete: if false; // approval flow is admin-fn only
     }
 
+    // ---------- depositRequests ----------
+    match /depositRequests/{requestId} {
+      allow read: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isSupport());
+      allow create: if false; // created via callable fn (validates input, notifies admins)
+      allow update, delete: if false; // review flow is admin-fn only
+    }
+
     // default deny
     match /{document=**} {
       allow read, write: if false;
