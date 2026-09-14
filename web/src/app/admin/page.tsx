@@ -22,7 +22,13 @@ async function getStats() {
     adminDb.collection("withdrawalRequests").where("status", "==", "pending").count().get(),
     adminDb.collection("transactions").where("createdAt", ">=", todayCutoff).count().get(),
     adminDb.collection("wallets").aggregate({ totalBalance: AggregateField.sum("balance") }).get(),
-    adminDb.collection("transactions").where("type", "==", "transfer").aggregate({ totalFees: AggregateField.sum("fee") }).get(),
+    // No `.where("type", "==", ...)` filter here: a sum() aggregation combined
+    // with an equality filter on a different field needs a composite index
+    // (the way an orderBy would), which doesn't exist and throws
+    // FAILED_PRECONDITION, crashing this server component. Only transfers
+    // ever set `fee`, so summing across the whole collection is equivalent
+    // and needs no extra index — same pattern as the unfiltered wallets sum.
+    adminDb.collection("transactions").aggregate({ totalFees: AggregateField.sum("fee") }).get(),
   ]);
 
   return {
