@@ -2,6 +2,7 @@ import * as functions from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { requireAdmin, writeAuditLog } from "./lib/adminGuard";
+import { validateFeeTiers, type FeeTier } from "./lib/fees";
 
 const db = getFirestore();
 
@@ -69,7 +70,8 @@ export const deleteAnnouncement = functions.onCall<{ announcementId: string }>(
 
 const AMOUNT_FIELDS = ["minTransferAmount", "maxTransferAmount", "dailyTransferLimit"] as const;
 const BOOL_FIELDS = ["maintenanceMode", "withdrawalRequiresApproval"] as const;
-const SETTINGS_KEYS: string[] = [...AMOUNT_FIELDS, ...BOOL_FIELDS];
+const ARRAY_FIELDS = ["transferFeeTiers"] as const;
+const SETTINGS_KEYS: string[] = [...AMOUNT_FIELDS, ...BOOL_FIELDS, ...ARRAY_FIELDS];
 const ABS_MAX_AMOUNT = 500_000_00;
 
 export const updateSettings = functions.onCall<{
@@ -78,6 +80,7 @@ export const updateSettings = functions.onCall<{
   maxTransferAmount?: number;
   dailyTransferLimit?: number;
   withdrawalRequiresApproval?: boolean;
+  transferFeeTiers?: FeeTier[];
 }>({ enforceAppCheck: true }, async (request) => {
   const adminUid = await requireAdmin(request.auth?.uid);
 
@@ -88,6 +91,9 @@ export const updateSettings = functions.onCall<{
     }
     if ((BOOL_FIELDS as readonly string[]).includes(key)) {
       if (typeof value !== "boolean") throw new HttpsError("invalid-argument", `${key} must be a boolean.`);
+    } else if ((ARRAY_FIELDS as readonly string[]).includes(key)) {
+      patch[key] = validateFeeTiers(value);
+      continue;
     } else {
       if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > ABS_MAX_AMOUNT) {
         throw new HttpsError("invalid-argument", `${key} must be a whole number of cents between 1 and ${ABS_MAX_AMOUNT}.`);

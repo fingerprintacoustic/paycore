@@ -35,6 +35,7 @@ export interface TransactionDoc {
   fromUid: string | null;
   toUid: string | null;
   amount: number;
+  fee: number;
   currency: string;
   note: string | null;
   referenceNumber: string;
@@ -57,4 +58,6 @@ export interface TransferFundsResponse {
   status: TransactionStatus;
   referenceNumber: string;
   newBalance: number | null;
+  fee: number;
+  totalCharged: number;
 }

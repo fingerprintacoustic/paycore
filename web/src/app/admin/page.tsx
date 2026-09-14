@@ -1,6 +1,6 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp, AggregateField } from "firebase-admin/firestore";
-import { Users, Landmark, Clock, AlertTriangle, Coins } from "lucide-react";
+import { Users, Landmark, Clock, AlertTriangle, Coins, TrendingUp } from "lucide-react";
 
 async function getStats() {
   const startOfDay = new Date();
@@ -14,6 +14,7 @@ async function getStats() {
     pendingWithdrawalsSnap,
     todayTxSnap,
     balanceSumSnap,
+    feeRevenueSnap,
   ] = await Promise.all([
     adminDb.collection("users").count().get(),
     adminDb.collection("users").where("status", "==", "frozen").count().get(),
@@ -21,6 +22,7 @@ async function getStats() {
     adminDb.collection("withdrawalRequests").where("status", "==", "pending").count().get(),
     adminDb.collection("transactions").where("createdAt", ">=", todayCutoff).count().get(),
     adminDb.collection("wallets").aggregate({ totalBalance: AggregateField.sum("balance") }).get(),
+    adminDb.collection("transactions").where("type", "==", "transfer").aggregate({ totalFees: AggregateField.sum("fee") }).get(),
   ]);
 
   return {
@@ -30,6 +32,7 @@ async function getStats() {
     pendingWithdrawals: pendingWithdrawalsSnap.data().count,
     transactionsToday: todayTxSnap.data().count,
     totalBalance: balanceSumSnap.data().totalBalance ?? 0,
+    feeRevenue: feeRevenueSnap.data().totalFees ?? 0,
   };
 }
 
@@ -39,6 +42,7 @@ export default async function AdminOverviewPage() {
   const cards = [
     { label: "Total users", value: stats.totalUsers.toLocaleString(), icon: Users },
     { label: "Total wallet balance", value: `$${(stats.totalBalance / 100).toLocaleString()}`, icon: Landmark },
+    { label: "Fee revenue (all time)", value: `$${(stats.feeRevenue / 100).toLocaleString()}`, icon: TrendingUp },
     { label: "Transactions today", value: stats.transactionsToday.toLocaleString(), icon: Clock },
     { label: "Pending deposits", value: stats.pendingDeposits.toLocaleString(), icon: Coins, alert: stats.pendingDeposits > 0 },
     { label: "Pending withdrawals", value: stats.pendingWithdrawals.toLocaleString(), icon: AlertTriangle, alert: stats.pendingWithdrawals > 0 },
@@ -47,7 +51,7 @@ export default async function AdminOverviewPage() {
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold text-white">Overview</h1>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(({ label, value, icon: Icon, alert }) => (
           <div
             key={label}
