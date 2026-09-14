@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, Users, Landmark, Coins, ArrowLeftRight, Megaphone, Settings, FileDown } from "lucide-react";
+import { Gauge, Users, Landmark, Coins, ArrowLeftRight, Megaphone, Settings, FileDown, HelpCircle } from "lucide-react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { href: "/admin/reports", label: "Reports", icon: FileDown },
   { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/help", label: "Help", icon: HelpCircle },
 ];
 
 export function AdminSidebar() {
