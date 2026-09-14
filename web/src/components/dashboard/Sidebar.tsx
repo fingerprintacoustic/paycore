@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Send, QrCode, Landmark, User, Settings } from "lucide-react";
+import { LayoutDashboard, Send, QrCode, Landmark, User, Settings, HelpCircle } from "lucide-react";
 import clsx from "clsx";
 
 const NAV_ITEMS = [
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/history", label: "Wallet", icon: Landmark },
   { href: "/dashboard/profile", label: "Profile", icon: User },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/help", label: "Help", icon: HelpCircle },
 ];
 
 export function Sidebar() {
