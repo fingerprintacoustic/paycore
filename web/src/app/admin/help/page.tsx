@@ -114,22 +114,12 @@ const SECTIONS: HelpSection[] = [
     ),
   },
   {
-    title: "Managing admin access",
+    title: "Adding or removing admins",
     body: (
-      <div className="space-y-2">
-        <p>
-          There&apos;s deliberately no in-app way to promote or demote an admin — that would let the app grant its own
-          elevated access, defeating the point of a separate trust tier. Instead, run this from a machine with access
-          to the Firebase project&apos;s service account:
-        </p>
-        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-slate-200">
-          <code>
-            GOOGLE_APPLICATION_CREDENTIALS=./service-account.json{"\n"}
-            {"  "}npx tsx scripts/grantAdminRole.ts &lt;uid-or-email&gt; &lt;admin|support|user&gt;
-          </code>
-        </pre>
-        <p>Use role &ldquo;admin&rdquo; or &ldquo;support&rdquo; to grant access, or &ldquo;user&rdquo; to revoke it.</p>
-      </div>
+      <p>
+        Admin access is granted outside the app, by the development team, as a deliberate safeguard — contact them to
+        add or remove an admin or support account.
+      </p>
     ),
   },
 ];
