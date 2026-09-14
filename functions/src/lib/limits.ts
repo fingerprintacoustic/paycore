@@ -1,5 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
+import type { FeeTier } from "./fees";
 
 const db = getFirestore();
 
@@ -9,16 +10,20 @@ export interface GlobalSettings {
   maxTransferAmount: number;
   dailyTransferLimit: number;
   withdrawalRequiresApproval: boolean;
+  transferFeeTiers: FeeTier[];
 }
 
 // Used when settings/global is missing or a field is unset. Deliberately
-// generous — a real limit is only in force once an admin sets it.
+// generous — a real limit is only in force once an admin sets it. Fee tiers
+// default to empty (free transfers) for the same reason: a fee only applies
+// once an admin has deliberately configured one.
 export const DEFAULT_SETTINGS: GlobalSettings = {
   maintenanceMode: false,
   minTransferAmount: 100, // $1.00
   maxTransferAmount: 500_000_00, // $500,000
   dailyTransferLimit: 1_000_000_00, // $1,000,000
   withdrawalRequiresApproval: true,
+  transferFeeTiers: [],
 };
 
 export async function getSettings(): Promise<GlobalSettings> {

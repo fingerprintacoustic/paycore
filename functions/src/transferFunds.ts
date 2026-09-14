@@ -3,6 +3,7 @@ import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import type { TransferFundsRequest, TransferFundsResponse } from "./types";
 import { getSettings, assertNotInMaintenance, outboundLast24h } from "./lib/limits";
+import { computeTransferFee } from "./lib/fees";
 
 const db = getFirestore();
 // Absolute guards, independent of admin settings — a misconfigured
@@ -57,6 +58,10 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
       throw new HttpsError("resource-exhausted", "This transfer would exceed your daily limit. Try again later or with a smaller amount.");
     }
 
+    // The fee is added on top of what the sender enters — the recipient always
+    // gets exactly `amount`, and the sender's wallet is debited amount + fee.
+    const fee = computeTransferFee(amount, settings.transferFeeTiers);
+
     const fromWalletRef = db.collection("wallets").doc(uid);
     const toWalletRef = db.collection("wallets").doc(toUid);
     const toUserRef = db.collection("users").doc(toUid);
@@ -77,6 +82,8 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
           status: data.status,
           referenceNumber: data.referenceNumber,
           newBalance: null,
+          fee: data.fee ?? 0,
+          totalCharged: (data.fee ?? 0) + data.amount,
         } as TransferFundsResponse;
       }
 
@@ -110,11 +117,12 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
       if (fromWallet.status !== "active") throw new HttpsError("failed-precondition", "Your wallet is frozen.");
       if (toWallet.status !== "active") throw new HttpsError("failed-precondition", "Recipient wallet is frozen.");
       if (fromWallet.currency !== toWallet.currency) throw new HttpsError("failed-precondition", "Currency mismatch.");
-      if (!Number.isSafeInteger(fromWallet.balance) || fromWallet.balance < amount) {
+      const totalDebit = amount + fee;
+      if (!Number.isSafeInteger(fromWallet.balance) || fromWallet.balance < totalDebit) {
         throw new HttpsError("failed-precondition", "Insufficient balance.");
       }
 
-      const newFromBalance = fromWallet.balance - amount;
+      const newFromBalance = fromWallet.balance - totalDebit;
       const newToBalance = toWallet.balance + amount;
       if (!Number.isSafeInteger(newToBalance)) throw new HttpsError("out-of-range", "Amount is too large.");
       const referenceNumber = generateReferenceNumber();
@@ -131,6 +139,7 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
         fromUid: uid,
         toUid,
         amount,
+        fee,
         currency: fromWallet.currency,
         note: note ?? null,
         referenceNumber,
@@ -142,18 +151,26 @@ export const transferFunds = functions.onCall<TransferFundsRequest>(
 
       const debitEntryRef = db.collection("ledgerEntries").doc();
       const creditEntryRef = db.collection("ledgerEntries").doc();
-      tx.set(debitEntryRef, { id: debitEntryRef.id, transactionId: requestId, uid, direction: "debit", amount, balanceAfter: newFromBalance, createdAt: now });
+      tx.set(debitEntryRef, { id: debitEntryRef.id, transactionId: requestId, uid, direction: "debit", amount: totalDebit, balanceAfter: newFromBalance, createdAt: now });
       tx.set(creditEntryRef, { id: creditEntryRef.id, transactionId: requestId, uid: toUid, direction: "credit", amount, balanceAfter: newToBalance, createdAt: now });
 
       const senderNotifRef = db.collection("notifications").doc();
-      tx.set(senderNotifRef, { uid, type: "transfer_sent", title: "Transfer sent", body: `You sent ${(amount / 100).toFixed(2)} ${fromWallet.currency} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
+      const feeSuffix = fee > 0 ? ` (+ ${(fee / 100).toFixed(2)} fee)` : "";
+      tx.set(senderNotifRef, { uid, type: "transfer_sent", title: "Transfer sent", body: `You sent ${(amount / 100).toFixed(2)} ${fromWallet.currency}${feeSuffix} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
       const recipientNotifRef = db.collection("notifications").doc();
       tx.set(recipientNotifRef, { uid: toUid, type: "transfer_received", title: "Money received",body: `You received ${(amount / 100).toFixed(2)} ${fromWallet.currency} — ${referenceNumber}`, read: false, createdAt: now, data: { transactionId: requestId } });
 
       const auditRef = db.collection("auditLogs").doc();
-      tx.set(auditRef, { id: auditRef.id, actorUid: uid, actorRole: "user", action: "transaction.transfer", targetType: "transaction", targetId: requestId, before: null, after: { fromUid: uid, toUid, amount, referenceNumber }, ip: null, createdAt: now });
+      tx.set(auditRef, { id: auditRef.id, actorUid: uid, actorRole: "user", action: "transaction.transfer", targetType: "transaction", targetId: requestId, before: null, after: { fromUid: uid, toUid, amount, fee, referenceNumber }, ip: null, createdAt: now });
 
-      return { transactionId: requestId, status: "completed", referenceNumber, newBalance: newFromBalance } as TransferFundsResponse;
+      return {
+        transactionId: requestId,
+        status: "completed",
+        referenceNumber,
+        newBalance: newFromBalance,
+        fee,
+        totalCharged: totalDebit,
+      } as TransferFundsResponse;
     });
 
     return result;

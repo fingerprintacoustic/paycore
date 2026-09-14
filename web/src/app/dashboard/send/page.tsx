@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import { transferFundsFn, verifyPinFn, lookupRecipientFn, newRequestId } from "@/lib/firebase/functions";
 import type { LookupRecipientResult } from "@/lib/firebase/functions";
+import { computeTransferFee, type FeeTier } from "@/lib/fees";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
@@ -21,6 +24,8 @@ export default function SendMoneyPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState(() => newRequestId());
+  const [fee, setFee] = useState(0);
+  const [totalCharged, setTotalCharged] = useState(0);
 
   async function handleFindRecipient(e: FormEvent) {
     e.preventDefault();
@@ -49,7 +54,7 @@ export default function SendMoneyPage() {
     setStep("amount");
   }
 
-  function handleContinueToPin(e: FormEvent) {
+  async function handleContinueToPin(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const parsed = Number(amount);
@@ -61,6 +66,21 @@ export default function SendMoneyPage() {
     if (cents > 50_000_000) {
       setError("Maximum transfer is $500,000.00.");
       return;
+    }
+    setLoading(true);
+    try {
+      const settingsSnap = await getDoc(doc(db, "settings", "global"));
+      const tiers = (settingsSnap.data()?.transferFeeTiers as FeeTier[] | undefined) ?? [];
+      const previewFee = computeTransferFee(cents, tiers);
+      setFee(previewFee);
+      setTotalCharged(cents + previewFee);
+    } catch {
+      // Fee preview is best-effort UX; the server computes and enforces the
+      // real fee regardless, so a failed preview shouldn't block sending.
+      setFee(0);
+      setTotalCharged(cents);
+    } finally {
+      setLoading(false);
     }
     setStep("pin");
   }
@@ -74,13 +94,15 @@ export default function SendMoneyPage() {
     try {
       const pinResult = await verifyPinFn({ pin });
       const cents = Math.round(Number(amount) * 100);
-      await transferFundsFn({
+      const { data } = await transferFundsFn({
         requestId,
         toUid: recipient.uid,
         amount: cents,
         note: note.trim() || undefined,
         stepUpToken: pinResult.data.stepUpToken,
       });
+      setFee(data.fee);
+      setTotalCharged(data.totalCharged);
       setStep("success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Transfer failed.";
@@ -112,6 +134,8 @@ export default function SendMoneyPage() {
     setError(null);
     setNeedsPinSetup(false);
     setRequestId(newRequestId());
+    setFee(0);
+    setTotalCharged(0);
     setStep("recipient");
   }
 
@@ -162,7 +186,7 @@ export default function SendMoneyPage() {
             <Input label="Amount" type="number" name="amount" step="0.01" min="1" max="500000" required value={amount} onChange={(e) => setAmount(e.target.value)} />
             <Input label="Note (optional)" name="note" maxLength={280} value={note} onChange={(e) => setNote(e.target.value)} />
             {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
-            <Button type="submit">Continue</Button>
+            <Button type="submit" loading={loading}>Continue</Button>
           </form>
         )}
         {step === "pin" && recipient && (
@@ -170,6 +194,11 @@ export default function SendMoneyPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Confirm sending <span className="font-mono font-medium text-slate-800 dark:text-slate-100">${Number(amount).toFixed(2)}</span> to {recipient.displayName}.
             </p>
+            {fee > 0 && (
+              <p className="-mt-2 text-xs text-slate-400">
+                + ${(fee / 100).toFixed(2)} fee — ${(totalCharged / 100).toFixed(2)} will be debited from your wallet.
+              </p>
+            )}
             <Input label="Enter your PIN" type="password" inputMode="numeric" pattern="[0-9]*" name="pin" minLength={4} maxLength={6} required value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} />
             {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
             {needsPinSetup && (
@@ -186,6 +215,11 @@ export default function SendMoneyPage() {
           <div className="space-y-4 text-center">
             <p className="text-lg font-semibold text-brand-700 dark:text-brand-300">Transfer complete</p>
             <p className="text-sm text-slate-500 dark:text-slate-400">${Number(amount).toFixed(2)} sent to {recipient?.displayName}.</p>
+            {fee > 0 && (
+              <p className="text-xs text-slate-400">
+                Includes a ${(fee / 100).toFixed(2)} fee — ${(totalCharged / 100).toFixed(2)} total debited.
+              </p>
+            )}
             <div className="flex justify-center gap-3">
               <Button type="button" variant="secondary" onClick={startAnotherTransfer}>
                 Send again

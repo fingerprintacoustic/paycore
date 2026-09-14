@@ -7,6 +7,7 @@ const DEFAULTS: GlobalSettings = {
   maxTransferAmount: 50_000_00,
   dailyTransferLimit: 100_000_00,
   withdrawalRequiresApproval: true,
+  transferFeeTiers: [],
 };
 
 async function getSettings(): Promise<GlobalSettings> {

@@ -202,4 +202,78 @@ describe("transferFunds", () => {
       transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2000, stepUpToken: t2 }, "alice"))
     ).rejects.toMatchObject({ code: "resource-exhausted" });
   });
+
+  // ---- admin-configurable transfer fees (settings/global.transferFeeTiers) ----
+
+  it("charges no fee when no tiers are configured", async () => {
+    const stepUpToken = await seedStepUpToken("alice");
+    const requestId = randomUUID();
+    const result = await transferFunds.run(
+      callableRequest({ requestId, toUid: "bob", amount: 2500, stepUpToken }, "alice")
+    );
+    expect(result.fee).toBe(0);
+    expect(result.totalCharged).toBe(2500);
+  });
+
+  it("charges a flat fee on top of the amount, debiting sender extra while crediting the recipient in full", async () => {
+    await db.collection("settings").doc("global").set({
+      transferFeeTiers: [{ minAmount: 0, maxAmount: null, feeType: "flat", feeValue: 50 }], // $0.50 flat
+    });
+    const stepUpToken = await seedStepUpToken("alice");
+    const requestId = randomUUID();
+    const result = await transferFunds.run(
+      callableRequest({ requestId, toUid: "bob", amount: 2500, stepUpToken }, "alice")
+    );
+    expect(result.fee).toBe(50);
+    expect(result.totalCharged).toBe(2550);
+    expect(result.newBalance).toBe(10000 - 2550);
+
+    const aliceWallet = (await db.collection("wallets").doc("alice").get()).data()!;
+    const bobWallet = (await db.collection("wallets").doc("bob").get()).data()!;
+    expect(aliceWallet.balance).toBe(10000 - 2550);
+    expect(bobWallet.balance).toBe(2500); // recipient gets the full amount, not amount-fee
+
+    const tx = (await db.collection("transactions").doc(requestId).get()).data()!;
+    expect(tx.amount).toBe(2500);
+    expect(tx.fee).toBe(50);
+  });
+
+  it("charges a percent fee for the tier matching the transfer amount", async () => {
+    await db.collection("settings").doc("global").set({
+      transferFeeTiers: [{ minAmount: 0, maxAmount: null, feeType: "percent", feeValue: 250 }], // 2.5%
+    });
+    const stepUpToken = await seedStepUpToken("alice");
+    const result = await transferFunds.run(
+      callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 4000, stepUpToken }, "alice") // $40.00
+    );
+    expect(result.fee).toBe(100); // 2.5% of 4000 = 100
+    expect(result.totalCharged).toBe(4100);
+  });
+
+  it("rejects a transfer when the balance covers the amount but not the fee", async () => {
+    await seedWallet("alice", 2500); // exactly enough for the transfer, none left for a fee
+    await db.collection("settings").doc("global").set({
+      transferFeeTiers: [{ minAmount: 0, maxAmount: null, feeType: "flat", feeValue: 50 }],
+    });
+    const stepUpToken = await seedStepUpToken("alice");
+    await expect(
+      transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2500, stepUpToken }, "alice"))
+    ).rejects.toMatchObject({ message: expect.stringContaining("Insufficient balance") });
+  });
+
+  it("applies different fees to different tiers within the same request", async () => {
+    await db.collection("settings").doc("global").set({
+      transferFeeTiers: [
+        { minAmount: 0, maxAmount: 999, feeType: "flat", feeValue: 10 }, // under $10: $0.10 flat
+        { minAmount: 1000, maxAmount: null, feeType: "percent", feeValue: 100 }, // $10+: 1%
+      ],
+    });
+    const t1 = await seedStepUpToken("alice");
+    const small = await transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 500, stepUpToken: t1 }, "alice"));
+    expect(small.fee).toBe(10);
+
+    const t2 = await seedStepUpToken("alice");
+    const large = await transferFunds.run(callableRequest({ requestId: randomUUID(), toUid: "bob", amount: 2000, stepUpToken: t2 }, "alice"));
+    expect(large.fee).toBe(20); // 1% of 2000
+  });
 });

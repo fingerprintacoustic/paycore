@@ -17,6 +17,8 @@ export interface TransferFundsOutput {
   status: string;
   referenceNumber: string;
   newBalance: number | null;
+  fee: number;
+  totalCharged: number;
 }
 
 export const transferFundsFn = httpsCallable<TransferFundsInput, TransferFundsOutput>(functions, "transferFunds");
