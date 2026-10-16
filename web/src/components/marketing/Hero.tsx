@@ -30,7 +30,16 @@ export function Hero() {
             See how it works
           </a>
         </div>
-        <p className="mt-6 text-xs text-slate-400">No card required. Free to send within PayCore.</p>
+        <p className="mt-6 text-xs text-slate-400">
+          No card required. Free to send within PayCore. &middot;{" "}
+          <Link
+            href="/demo"
+            className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700 dark:text-brand-300"
+          >
+            Try a live demo
+          </Link>{" "}
+          — no signup needed.
+        </p>
       </div>
       <div className="flex justify-center md:justify-end">
         <ReceiptStack />
