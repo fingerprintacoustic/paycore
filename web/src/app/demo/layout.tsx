@@ -1,3 +1,5 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { LayoutDashboard, Send, QrCode, HandCoins } from "lucide-react";
 import { Sidebar, type SidebarNavItem } from "@/components/dashboard/Sidebar";
@@ -13,6 +15,17 @@ import { DemoTopBar } from "@/components/demo/DemoTopBar";
 // caused the September App Check bug, just for a different cookie. A
 // route with no auth gate sidesteps that risk entirely, and anyone with
 // the link can open it — which is the point for a sales demo.
+//
+// "use client" here (unlike src/app/dashboard/layout.tsx, which must stay
+// a server component for getServerUser()/adminDb): DEMO_NAV_ITEMS carries
+// lucide-react icon components in its `icon` field, and passing those as
+// props from a server component into the client <Sidebar> forces Next.js
+// to serialize them for the server->client boundary. Icon components are
+// forwardRef objects, not serializable data, so the build failed with
+// "Export encountered an error on /demo/page" while trying to stringify
+// one. Making this layout a client component removes that boundary —
+// page.tsx (and the other /demo/* pages) stay server components as
+// normal; Next renders them and passes the result in via `children`.
 const DEMO_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/demo", label: "Overview", icon: LayoutDashboard },
   { href: "/demo/send", label: "Send money", icon: Send },
